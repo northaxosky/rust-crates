@@ -224,6 +224,7 @@ impl Default for GnrlWriter {
 mod tests {
     use super::*;
     use crate::{Entries, extract, read};
+    use proptest::prelude::*;
 
     fn u16le(b: &[u8], o: usize) -> u16 {
         u16::from_le_bytes([b[o], b[o + 1]])
@@ -398,5 +399,46 @@ mod tests {
         let mut sink = Vec::new();
         w.write(&mut sink).unwrap();
         assert_eq!(sink, w.to_vec().unwrap());
+    }
+
+    #[test]
+    fn writes_are_deterministic() {
+        let build = || {
+            let mut w = GnrlWriter::new();
+            w.add_file_stored("Data\\a.bin", vec![1, 2, 3]).unwrap();
+            w.add_file("Data\\b.bin", vec![4u8; 64]).unwrap();
+            w.to_vec().unwrap()
+        };
+        assert_eq!(build(), build());
+    }
+
+    proptest! {
+        // Any set of unique files survives a write -> read -> extract round trip.
+        #[test]
+        fn gnrl_round_trips(
+            files in proptest::collection::vec(
+                (proptest::collection::vec(any::<u8>(), 0..64), any::<bool>()),
+                0..8,
+            ),
+        ) {
+            let mut w = GnrlWriter::new();
+            for (i, (data, compress)) in files.iter().enumerate() {
+                let path = format!("Data\\file{i}.bin");
+                if *compress {
+                    w.add_file(&path, data.clone()).unwrap();
+                } else {
+                    w.add_file_stored(&path, data.clone()).unwrap();
+                }
+            }
+            let img = w.to_vec().unwrap();
+            let (_h, entries) = read(&img).unwrap();
+            let Entries::General(entries) = entries else {
+                panic!("expected general");
+            };
+            prop_assert_eq!(entries.len(), files.len());
+            for (entry, (data, _)) in entries.iter().zip(files.iter()) {
+                prop_assert_eq!(&extract(&img, entry).unwrap(), data);
+            }
+        }
     }
 }

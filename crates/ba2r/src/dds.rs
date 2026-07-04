@@ -300,6 +300,7 @@ fn u32le(b: &[u8], o: usize) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     fn u32le(b: &[u8], o: usize) -> u32 {
         u32::from_le_bytes(b[o..o + 4].try_into().unwrap())
@@ -405,5 +406,125 @@ mod tests {
         put_le(&mut dds, 0x70, 0x20_0000);
         dds.extend_from_slice(&[0u8; 32]);
         assert!(matches!(parse(&dds), Err(DdsError::UnsupportedShape(_))));
+    }
+
+    fn legacy_fourcc(cc: &[u8; 4], width: u32, height: u32) -> Vec<u8> {
+        let mut h = legacy_dxt1(width, height);
+        h[0x54..0x58].copy_from_slice(cc);
+        h
+    }
+
+    #[test]
+    fn maps_legacy_fourcc_formats() {
+        for (cc, dxgi) in [(b"DXT3", 74u8), (b"DXT5", 77), (b"ATI2", 83), (b"BC5S", 84)] {
+            let mut dds = legacy_fourcc(cc, 8, 8);
+            dds.extend_from_slice(&[0u8; 64]);
+            assert_eq!(parse(&dds).unwrap().dxgi, dxgi, "cc={cc:?}");
+        }
+        for (cc, dxgi) in [(b"ATI1", 80u8), (b"BC4U", 80)] {
+            let mut dds = legacy_fourcc(cc, 8, 8);
+            dds.extend_from_slice(&[0u8; 32]);
+            assert_eq!(parse(&dds).unwrap().dxgi, dxgi, "cc={cc:?}");
+        }
+    }
+
+    #[test]
+    fn maps_legacy_uncompressed_bgra() {
+        let mut h = vec![0u8; 128];
+        h[0..4].copy_from_slice(b"DDS ");
+        put_le(&mut h, 0x04, 124);
+        put_le(&mut h, 0x08, 0x1007);
+        put_le(&mut h, 0x0C, 4);
+        put_le(&mut h, 0x10, 4);
+        put_le(&mut h, 0x4C, 32);
+        put_le(&mut h, 0x50, 0x41);
+        put_le(&mut h, 0x58, 32);
+        put_le(&mut h, 0x5C, 0x00FF_0000);
+        put_le(&mut h, 0x60, 0x0000_FF00);
+        put_le(&mut h, 0x64, 0x0000_00FF);
+        put_le(&mut h, 0x68, 0xFF00_0000);
+        h.extend_from_slice(&[0u8; 64]);
+        assert_eq!(parse(&h).unwrap().dxgi, 87);
+    }
+
+    #[test]
+    fn parses_a_dx10_cubemap() {
+        let mut dds = header(8, 8, 1, 98, true);
+        dds.extend_from_slice(&vec![0u8; 6 * 64]);
+        let t = parse(&dds).unwrap();
+        assert!(t.cubemap);
+        assert_eq!(t.data.len(), 6 * 64);
+    }
+
+    #[test]
+    fn rejects_arrays_and_3d() {
+        let mut arr = header(8, 8, 1, 98, false);
+        put_le(&mut arr, 0x8C, 2);
+        arr.extend_from_slice(&[0u8; 64]);
+        assert!(matches!(parse(&arr), Err(DdsError::UnsupportedShape(_))));
+        let mut vol = header(8, 8, 1, 98, false);
+        put_le(&mut vol, 0x84, 4);
+        vol.extend_from_slice(&[0u8; 64]);
+        assert!(matches!(parse(&vol), Err(DdsError::UnsupportedShape(_))));
+    }
+
+    #[test]
+    fn mip_size_matches_the_formula() {
+        assert_eq!(mip_size(1024, 1024, 71), Some(0x80000));
+        assert_eq!(mip_size(8, 8, 98), Some(64));
+        assert_eq!(mip_size(4, 1, 28), Some(16));
+        assert_eq!(mip_size(8, 8, 250), None);
+    }
+
+    // Build a DDS-shaped blob: valid magic and sizes, random dimensions/format/payload.
+    fn arbitrary_dds() -> impl Strategy<Value = Vec<u8>> {
+        (
+            any::<u16>(),
+            any::<u16>(),
+            0u32..16,
+            any::<u32>(),
+            prop::sample::select(vec![*b"DXT1", *b"DXT5", *b"ATI2", *b"DX10", [0u8; 4]]),
+            any::<u32>(),
+            any::<u32>(),
+            0usize..300,
+            any::<u8>(),
+            0u32..4,
+        )
+            .prop_map(|(w, h, mips, hflags, cc, pf, dxgi, plen, fill, arr)| {
+                let mut b = vec![0u8; 128];
+                b[0..4].copy_from_slice(b"DDS ");
+                put_le(&mut b, 0x04, 124);
+                put_le(&mut b, 0x08, hflags);
+                put_le(&mut b, 0x0C, u32::from(h));
+                put_le(&mut b, 0x10, u32::from(w));
+                put_le(&mut b, 0x1C, mips);
+                put_le(&mut b, 0x4C, 32);
+                put_le(&mut b, 0x50, pf);
+                b[0x54..0x58].copy_from_slice(&cc);
+                put_le(&mut b, 0x58, 32);
+                if &cc == b"DX10" {
+                    b.extend_from_slice(&dxgi.to_le_bytes());
+                    b.extend_from_slice(&3u32.to_le_bytes());
+                    b.extend_from_slice(&0u32.to_le_bytes());
+                    b.extend_from_slice(&arr.to_le_bytes());
+                    b.extend_from_slice(&0u32.to_le_bytes());
+                }
+                let end = b.len() + plen;
+                b.resize(end, fill);
+                b
+            })
+    }
+
+    proptest! {
+        // Parsing arbitrary or DDS-shaped bytes must never panic.
+        #[test]
+        fn parse_never_panics(
+            bytes in prop_oneof![
+                proptest::collection::vec(any::<u8>(), 0..256),
+                arbitrary_dds(),
+            ],
+        ) {
+            let _ = parse(&bytes);
+        }
     }
 }

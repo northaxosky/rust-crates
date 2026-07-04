@@ -317,6 +317,7 @@ fn split_chunks(texture: &ParsedTexture<'_>) -> Vec<RawChunk> {
 mod tests {
     use super::*;
     use crate::{Entries, extract_texture, read};
+    use proptest::prelude::*;
 
     fn u16le(b: &[u8], o: usize) -> u16 {
         u16::from_le_bytes([b[o], b[o + 1]])
@@ -362,7 +363,7 @@ mod tests {
     fn splits_mips_like_archive2() {
         let dds = dx10_dds(1024, 1024, 11, 71, false, 0x80000 + 0x20000 + 0xAAB8);
         let mut w = Dx10Writer::new();
-        w.add_texture("t.dds", dds).unwrap();
+        w.add_texture("t.dds", dds.clone()).unwrap();
         let img = w.to_vec().unwrap();
         let (_h, entries) = read(&img).unwrap();
         let Entries::Texture(textures) = entries else {
@@ -374,6 +375,7 @@ mod tests {
         assert_eq!(range(&chunks[0]), (0, 0, 0x80000));
         assert_eq!(range(&chunks[1]), (1, 1, 0x20000));
         assert_eq!(range(&chunks[2]), (2, 10, 0xAAB8));
+        assert_eq!(extract_texture(&img, &textures[0]).unwrap(), dds);
     }
 
     #[test]
@@ -447,5 +449,81 @@ mod tests {
             w.add_texture("a.dds", b"NOPE".to_vec()),
             Err(Ba2WriteError::Dds { .. })
         ));
+    }
+
+    fn total_size(width: u32, height: u32, mips: u32, dxgi: u32) -> usize {
+        (0..mips)
+            .map(|m| {
+                let mw = (width >> m).max(1);
+                let mh = (height >> m).max(1);
+                dds::mip_size(mw, mh, dxgi).unwrap() as usize
+            })
+            .sum()
+    }
+
+    #[test]
+    fn packs_multiple_textures() {
+        let a = dx10_dds(16, 16, 1, 71, false, total_size(16, 16, 1, 71));
+        let b = dx10_dds(8, 8, 1, 98, false, total_size(8, 8, 1, 98));
+        let mut w = Dx10Writer::new();
+        w.add_texture("Textures\\a.dds", a.clone()).unwrap();
+        w.add_texture("Textures\\b.dds", b.clone()).unwrap();
+        let img = w.to_vec().unwrap();
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::Texture(textures) = entries else {
+            panic!("expected texture");
+        };
+        assert_eq!(textures.len(), 2);
+        assert_eq!(extract_texture(&img, &textures[0]).unwrap(), a);
+        assert_eq!(extract_texture(&img, &textures[1]).unwrap(), b);
+    }
+
+    #[test]
+    fn caps_at_four_chunks() {
+        let side = 4096u32;
+        let mips = 32 - side.leading_zeros();
+        let total = total_size(side, side, mips, 71);
+        let mut dds = dds::header(side, side, mips, 71, false);
+        let start = dds.len();
+        dds.resize(start + total, 7);
+        let mut w = Dx10Writer::new();
+        w.add_texture("Textures\\big.dds", dds.clone()).unwrap();
+        let img = w.to_vec().unwrap();
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::Texture(textures) = entries else {
+            panic!("expected texture");
+        };
+        let chunks = &textures[0].chunks;
+        assert_eq!(chunks.len(), 4);
+        assert_eq!(
+            (chunks[3].start_mip, chunks[3].end_mip),
+            (3, (mips - 1) as u16)
+        );
+        assert_eq!(extract_texture(&img, &textures[0]).unwrap(), dds);
+    }
+
+    proptest! {
+        // DX10-extended DDS textures survive write -> read -> extract byte for byte.
+        #[test]
+        fn dx10_round_trips(
+            dim_exp in 3u32..8,
+            fmt in prop::sample::select(vec![71u32, 74, 77, 80, 83, 98]),
+            fill in any::<u8>(),
+        ) {
+            let side = 1u32 << dim_exp;
+            let mips = 32 - side.leading_zeros();
+            let total = total_size(side, side, mips, fmt);
+            let mut dds = dds::header(side, side, mips, fmt, false);
+            let start = dds.len();
+            dds.resize(start + total, fill);
+            let mut w = Dx10Writer::new();
+            w.add_texture("Textures\\z.dds", dds.clone()).unwrap();
+            let img = w.to_vec().unwrap();
+            let (_h, entries) = read(&img).unwrap();
+            let Entries::Texture(textures) = entries else {
+                panic!("expected texture");
+            };
+            prop_assert_eq!(extract_texture(&img, &textures[0]).unwrap(), dds);
+        }
     }
 }

@@ -11,3 +11,6 @@ publish = false
 [dependencies]
 thiserror.workspace = true
 flate2.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

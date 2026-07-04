@@ -312,6 +312,7 @@ fn read_dx10(b: &[u8], names: &[Option<String>]) -> Result<Vec<Dx10Entry>, Ba2Er
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use std::io::Write;
 
     // Build a one-file GNRL archive: header, one 36-byte record, the stored data, then the name table.
@@ -427,12 +428,12 @@ mod tests {
         b.push(flags);
         b.push(tile_mode);
         let mut off = data_start;
-        for (packed, unpacked, data) in &stored {
+        for (i, (packed, unpacked, data)) in stored.iter().enumerate() {
             b.extend_from_slice(&(off as u64).to_le_bytes());
             b.extend_from_slice(&packed.to_le_bytes());
             b.extend_from_slice(&unpacked.to_le_bytes());
-            b.extend_from_slice(&0u16.to_le_bytes());
-            b.extend_from_slice(&0u16.to_le_bytes());
+            b.extend_from_slice(&(i as u16).to_le_bytes());
+            b.extend_from_slice(&(i as u16).to_le_bytes());
             b.extend_from_slice(&0xBAAD_F00Du32.to_le_bytes());
             off += data.len();
         }
@@ -494,5 +495,136 @@ mod tests {
         let dds = extract_texture(&img, &textures[0]).unwrap();
         assert_eq!(u32le(&dds, 0x70), 0xFE00);
         assert_eq!(u32le(&dds, 0x88), 0x4);
+    }
+
+    #[test]
+    fn rejects_a_short_header() {
+        assert!(matches!(
+            Header::parse(b"BTDX00"),
+            Err(Ba2Error::TooShort { .. })
+        ));
+    }
+
+    #[test]
+    fn rejects_an_unsupported_type() {
+        let mut b = Vec::new();
+        b.extend_from_slice(MAGIC);
+        b.extend_from_slice(&1u32.to_le_bytes());
+        b.extend_from_slice(b"MEOW");
+        b.extend_from_slice(&0u32.to_le_bytes());
+        b.extend_from_slice(&0u64.to_le_bytes());
+        assert!(matches!(read(&b), Err(Ba2Error::UnsupportedType(t)) if &t == b"MEOW"));
+    }
+
+    #[test]
+    fn extract_rejects_out_of_bounds_data() {
+        let entry = GnrlEntry {
+            path: None,
+            offset: 10_000,
+            packed_size: 0,
+            unpacked_size: 8,
+        };
+        assert!(matches!(
+            extract(&[0u8; 64], &entry),
+            Err(Ba2Error::Malformed(_))
+        ));
+    }
+
+    #[test]
+    fn extract_detects_a_decompressed_size_mismatch() {
+        let comp = zlib(b"hello world");
+        let img = gnrl_archive("Meshes\\a.nif", &comp, comp.len() as u32, 99);
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::General(files) = entries else {
+            panic!("expected general");
+        };
+        assert!(matches!(
+            extract(&img, &files[0]),
+            Err(Ba2Error::Malformed(_))
+        ));
+    }
+
+    #[test]
+    fn reads_a_multi_chunk_texture() {
+        let mip0 = vec![1u8; 100];
+        let mip1 = vec![2u8; 20];
+        let img = dx10_archive(
+            64,
+            64,
+            2,
+            98,
+            0,
+            8,
+            &[(mip0.clone(), false), (mip1.clone(), true)],
+        );
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::Texture(textures) = entries else {
+            panic!("expected texture");
+        };
+        assert_eq!(textures[0].chunks.len(), 2);
+        assert_eq!(
+            (
+                textures[0].chunks[0].start_mip,
+                textures[0].chunks[0].end_mip
+            ),
+            (0, 0)
+        );
+        assert_eq!(
+            (
+                textures[0].chunks[1].start_mip,
+                textures[0].chunks[1].end_mip
+            ),
+            (1, 1)
+        );
+        let dds = extract_texture(&img, &textures[0]).unwrap();
+        let mut payload = mip0;
+        payload.extend_from_slice(&mip1);
+        assert_eq!(&dds[148..], &payload[..]);
+    }
+
+    // Build a BTDX archive with a plausible header but otherwise random body.
+    fn arbitrary_archive() -> impl Strategy<Value = Vec<u8>> {
+        (
+            prop::sample::select(vec![*b"GNRL", *b"DX10", *b"MEOW"]),
+            0u32..4,
+            any::<u64>(),
+            proptest::collection::vec(any::<u8>(), 0..400),
+        )
+            .prop_map(|(tag, count, name_off, tail)| {
+                let mut b = Vec::new();
+                b.extend_from_slice(MAGIC);
+                b.extend_from_slice(&1u32.to_le_bytes());
+                b.extend_from_slice(&tag);
+                b.extend_from_slice(&count.to_le_bytes());
+                b.extend_from_slice(&name_off.to_le_bytes());
+                b.extend_from_slice(&tail);
+                b
+            })
+    }
+
+    proptest! {
+        // Reading and extracting arbitrary or near-valid bytes must never panic.
+        #[test]
+        fn read_never_panics(
+            bytes in prop_oneof![
+                proptest::collection::vec(any::<u8>(), 0..512),
+                arbitrary_archive(),
+            ],
+        ) {
+            if let Ok((_h, entries)) = read(&bytes) {
+                match entries {
+                    Entries::General(files) => {
+                        for f in &files {
+                            let _ = extract(&bytes, f);
+                        }
+                    }
+                    Entries::Texture(textures) => {
+                        for t in &textures {
+                            let _ = extract_texture(&bytes, t);
+                        }
+                    }
+                }
+            }
+        }
     }
 }

@@ -11,6 +11,7 @@ repository = "https://github.com/northaxosky/rust-crates"
 [workspace.dependencies]
 thiserror = "2"
 flate2 = "1"
+proptest = "1"
 
 [profile.release]
 opt-level = 2

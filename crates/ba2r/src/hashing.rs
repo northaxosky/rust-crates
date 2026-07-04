@@ -120,6 +120,7 @@ const CRC_TABLE: [u32; 256] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     fn key(path: &[u8]) -> FileHash {
         hash_file(path).1
@@ -135,27 +136,95 @@ mod tests {
 
     // Vectors lifted from real Fallout 4 archives; the non-ASCII path guards raw-byte hashing.
     #[test]
-    fn matches_known_vectors() {
-        assert_eq!(
-            key(b"Sound\\Voice\\Fallout4.esm\\RobotMrHandy\\Mar\xEDa_M.fuz"),
-            triple(0xC9FB26F9, 0x007A7566, 0x8A9C014E)
-        );
-        assert_eq!(
-            key(b"Interface\\Pipboy_StatsPage.swf"),
-            triple(0x2F26E4D0, 0x00667773, 0xD2FDF873)
-        );
-        assert_eq!(
-            key(b"Meshes\\debris\\roundrock2_dirt.nif"),
-            triple(0x1E47A158, 0x0066696E, 0xF55EC6BA)
-        );
-        assert_eq!(
-            key(b"scripts\\MinRadiantOwnedBuildResourceScript.pex"),
-            triple(0xA2DAD4FD, 0x00786570, 0x40724840)
-        );
-        assert_eq!(
-            key(b"ShadersFX\\Shaders011.fxp"),
-            triple(0x883415D8, 0x00707866, 0xDFAE3D0F)
-        );
+    fn matches_all_known_vectors() {
+        #[rustfmt::skip]
+        let vectors: &[(&[u8], u32, u32, u32)] = &[
+            (b"Sound\\Voice\\Fallout4.esm\\RobotMrHandy\\Mar\xEDa_M.fuz", 0xC9FB26F9, 0x007A7566, 0x8A9C014E),
+            (br"Strings\ccBGSFO4001-PipBoy(Black)_en.DLSTRINGS", 0x1985075C, 0x74736C64, 0x29F6B58B),
+            (br"Textures\CreationClub\BGSFO4001\AnimObjects\PipBoy\PipBoy02(Black)_d.DDS", 0x69E1E82C, 0x00736464, 0x23157A84),
+            (br"Materials\CreationClub\BGSFO4003\AnimObjects\PipBoy\PipBoyLabels01(Camo01).BGSM", 0x0785843B, 0x6D736762, 0x818374CC),
+            (br"Textures\CreationClub\BGSFO4003\AnimObjects\PipBoy\PipBoy02(Camo01)_d.DDS", 0xF2D2F9A7, 0x00736464, 0xE9DB0C08),
+            (br"Strings\ccBGSFO4004-PipBoy(Camo02)_esmx.DLSTRINGS", 0xC26B77C1, 0x74736C64, 0x29F6B58B),
+            (br"Textures\CreationClub\BGSFO4004\AnimObjects\PipBoy\PipBoyLabels01(Camo02)_d.DDS", 0xB32EE4B0, 0x00736464, 0x089FAA9B),
+            (br"Strings\ccBGSFO4006-PipBoy(Chrome)_es.STRINGS", 0xA94A4503, 0x69727473, 0x29F6B58B),
+            (br"Textures\CreationClub\BGSFO4006\AnimObjects\PipBoy\PipBoy01(Chrome)_s.DDS", 0xE2D67EE2, 0x00736464, 0xC251DC17),
+            (br"Meshes\CreationClub\BGSFO4016\Clothes\Prey\MorganSpaceSuit_M_First.nif", 0x212E5DAD, 0x0066696E, 0x741DAAC0),
+            (br"Textures\CreationClub\BGSFO4016\Clothes\Prey\Morgan_Male_Body_s.DDS", 0x9C672F34, 0x00736464, 0x1D5F0EDF),
+            (br"Strings\ccBGSFO4018-GaussRiflePrototype_ru.STRINGS", 0x5198717F, 0x69727473, 0x29F6B58B),
+            (br"Textures\CreationClub\BGSFO4018\Weapons\GaussRiflePrototype\Barrel02_s.DDS", 0x2C98BAA2, 0x00736464, 0x8D59E9EA),
+            (br"Strings\ccBGSFO4019-ChineseStealthArmor_esmx.DLSTRINGS", 0xDDF2A35F, 0x74736C64, 0x29F6B58B),
+            (br"Textures\CreationClub\BGSFO4019\Armor\ChineseStealthArmor\ChineseStealthArmor01_d.DDS", 0x03C2AA10, 0x00736464, 0x71ED2818),
+            (br"Materials\CreationClub\BGSFO4020\Actors\PowerArmor\T45helmet01(Black).BGSM", 0xF56D31C0, 0x6D736762, 0x28A143A5),
+            (br"Textures\CreationClub\BGSFO4020\Actors\PowerArmor\T51\Black\T51Helmet01(Black)_d.DDS", 0x3192919D, 0x00736464, 0xA56D1E61),
+            (br"Materials\CreationClub\BGSFO4038\Actors\PowerArmor\HorsePAHelmet.BGSM", 0xE90B72CC, 0x6D736762, 0x44676566),
+            (br"Textures\CreationClub\BGSFO4038\Actors\PowerArmor\HorsePATorso_teal_d.DDS", 0x0A6251B3, 0x00736464, 0xC1AC59B4),
+            (br"Strings\ccBGSFO4044-HellfirePowerArmor_en.DLSTRINGS", 0x3E5C1E5E, 0x74736C64, 0x29F6B58B),
+            (br"Textures\CreationClub\BGSFO4044\Actors\PowerArmor\HellfirePAHelmet_Institute_d.DDS", 0x0F221EAF, 0x00736464, 0xC021EF40),
+            (br"Meshes\Weapons\HandmadeShotgun\HandmadeShotgun_GlowSights.nif", 0x4E080CE2, 0x0066696E, 0xCCD47ECF),
+            (br"Textures\Weapons\HandmadeShotgun\HandmadeShotgun_Barrels_GhoulSlayer_d.DDS", 0xBBFC484C, 0x00736464, 0xCEAE4154),
+            (br"Materials\CreationClub\FSVFO4001\Clothes\MilitaryBackpack\BackpackPatch_NCR02.bgsm", 0x90EB78B9, 0x6D736762, 0xDA685DF4),
+            (br"Textures\CreationClub\FSVFO4001\Clothes\MilitaryBackpack\Button_SunsetSars_d.DDS", 0xC25F8604, 0x00736464, 0xD1CE178D),
+            (br"Materials\CreationClub\FSVFO4002\Furniture\MidCenturyModern01\BedSpread01.bgsm", 0xA5AAE799, 0x6D736762, 0xBECD0DEF),
+            (br"Textures\CreationClub\FSVFO4002\Furniture\MidCenturyModern01\Bed01_n.DDS", 0x6A09686A, 0x00736464, 0xBA782808),
+            (br"Sound\FX\DLC03\NPC\Gulper\NPC_Gulper_Foot_Walk_02.xwm", 0xFE001981, 0x006D7778, 0xE7FBD6C4),
+            (br"Textures\Terrain\DLC03FarHarbor\DLC03FarHarbor.4.-69.41.DDS", 0x36BACD03, 0x00736464, 0x8184624D),
+            (br"Sound\Voice\DLCCoast.esm\PlayerVoiceFemale01\00043FFC_1.fuz", 0x339EFB3F, 0x007A7566, 0x3A5289D4),
+            (br"Meshes\PreCombined\DLCNukaWorld.esm\0000F616_17EAC297_OC.NIF", 0xD4AD97F7, 0x0066696E, 0x0787B7E9),
+            (br"Textures\Terrain\NukaWorld\NukaWorld.4.-28.28_msn.DDS", 0x86C13103, 0x00736464, 0x26C08933),
+            (br"Sound\Voice\DLCNukaWorld.esm\DLC04NPCMJohnCalebBradberton\00044D5E_1.fuz", 0x896E4419, 0x007A7566, 0xD6575CD6),
+            (br"Meshes\SCOL\DLCRobot.esm\CM00007BD8.NIF", 0x103559EF, 0x0066696E, 0xF584B7C4),
+            (br"Textures\DLC01\SetDressing\Rubble\Robottrashpilesnorust_s.DDS", 0xC7AF7106, 0x00736464, 0x5FD1A1B0),
+            (br"Sound\Voice\DLCRobot.esm\DLC01RobotCompanionFemaleProcessed\00001460_1.fuz", 0x6D3D7DC7, 0x007A7566, 0xB2B47CAD),
+            (br"Materials\DLC02\SetDressing\Workshop\NeonSignage\NeonLetterKit01-Orange-5.BGEM", 0x21D59551, 0x6D656762, 0x926F0C27),
+            (br"Textures\DLC02\SetDressing\Workshop\Traps\DLC02_SpringTrap01_s.DDS", 0x02BE99A4, 0x00736464, 0xF03CA2DF),
+            (br"Sound\FX\DLC05\PHY\BallTrack\PHY_Metal_BallTrack_SteelBall_Wood_H_03.xwm", 0x33AABE0C, 0x006D7778, 0x07AA294C),
+            (br"Textures\DLC05\Effects\PaintBalls\ImpactDecalPaintSplatters01Red_d.DDS", 0x6327DF24, 0x00736464, 0xFB5FB431),
+            (br"Meshes\SCOL\DLCworkshop03.esm\CM00001091.NIF", 0x2CAF6750, 0x0066696E, 0xABA83647),
+            (br"Textures\DLC06\Interiors\Vault\DLC06VltSignWelcome88_01_d.DDS", 0x825BD732, 0x00736464, 0xAE76DDEF),
+            (br"Sound\Voice\DLCworkshop03.esm\FemaleEvenToned\00005232_1.fuz", 0x4DB6EE2D, 0x007A7566, 0xDA9F7ABC),
+            (br"Meshes\AnimTextData\DynamicIdleData\5693375383928345500.txt", 0x997FC17A, 0x00747874, 0xFD345C50),
+            (br"Interface\Pipboy_StatsPage.swf", 0x2F26E4D0, 0x00667773, 0xD2FDF873),
+            (br"Materials\Landscape\Grass\BeachGrass01.BGSM", 0xB023CE22, 0x6D736762, 0x941D851F),
+            (br"Meshes\Actors\Character\FaceGenData\FaceGeom\Fallout4.esm\000B3EC7.NIF", 0x90C91640, 0x0066696E, 0x067FA81E),
+            (br"Meshes\PreCombined\0000E069_7831AAC9_OC.NIF", 0x5F0B19DF, 0x0066696E, 0xE659D075),
+            (br"scripts\MinRadiantOwnedBuildResourceScript.pex", 0xA2DAD4FD, 0x00786570, 0x40724840),
+            (br"Meshes\debris\roundrock2_dirt.nif", 0x1E47A158, 0x0066696E, 0xF55EC6BA),
+            (br"ShadersFX\Shaders011.fxp", 0x883415D8, 0x00707866, 0xDFAE3D0F),
+            (br"Sound\FX\FX\Bullet\Impact\xxx\FX_Bullet_Impact_Dirt_04.xwm", 0xFFAD9A14, 0x006D7778, 0xCBA20EB7),
+            (br"Textures\Effects\ColorBlackZeroAlphaUtility.DDS", 0xF912F225, 0x00736464, 0xEA3C9738),
+            (br"Textures\interiors\Building\BldWindow01_s.DDS", 0x6ECA4F0C, 0x00736464, 0x5A3A7C7A),
+            (br"Textures\Terrain\Commonwealth\Commonwealth.4.-8.12_msn.DDS", 0x55E37BD8, 0x00736464, 0x4409E1A9),
+            (br"Textures\Clothes\Nat\Nats_Outfit_s.DDS", 0x692FFE7D, 0x00736464, 0x3F5BEDF1),
+            (br"Textures\Interface\Newspaper\Newspaper_s.DDS", 0xFAC17C6C, 0x00736464, 0x58B9C5A4),
+            (br"Textures\Actors\Character\FaceCustomization\Fallout4.esm\00110043_s.DDS", 0x09A155E6, 0x00736464, 0x9C7DFA7A),
+            (br"Textures\Terrain\Commonwealth\Commonwealth.4.-48.-60.DDS", 0x182C2446, 0x00736464, 0x4409E1A9),
+            (br"Textures\Terrain\Commonwealth\Commonwealth.4.-80.8_msn.DDS", 0xDA3234A4, 0x00736464, 0x4409E1A9),
+            (br"Textures\Terrain\SanctuaryHillsWorld\SanctuaryHillsWorld.4.-36.40.DDS", 0xDD27070A, 0x00736464, 0x49AAA5E1),
+            (br"Textures\Terrain\SanctuaryHillsWorld\SanctuaryHillsWorld.4.76.-24.DDS", 0x71560B31, 0x00736464, 0x49AAA5E1),
+            (br"Sound\Voice\Fallout4.esm\NPCMTravisMiles\000A6032_1.fuz", 0x34402DE0, 0x007A7566, 0xF186D761),
+        ];
+        for &(path, file, extension, directory) in vectors {
+            assert_eq!(
+                key(path),
+                triple(file, extension, directory),
+                "path: {}",
+                String::from_utf8_lossy(path)
+            );
+        }
+    }
+
+    proptest! {
+        // Normalization makes hashing case- and separator-insensitive with leading/trailing slashes.
+        #[test]
+        fn hashing_ignores_case_and_separator(
+            dir in "[a-zA-Z0-9_]{1,16}",
+            stem in "[a-zA-Z0-9_]{1,16}",
+            ext in "[a-zA-Z]{1,5}",
+        ) {
+            let a = format!("{dir}\\{stem}.{ext}");
+            let b = format!("/{}/{}.{}\\", dir.to_uppercase(), stem.to_uppercase(), ext.to_uppercase());
+            prop_assert_eq!(key(a.as_bytes()), key(b.as_bytes()));
+        }
     }
 
     // Forward slashes and mixed case must normalize to the same key and on-disk name.
