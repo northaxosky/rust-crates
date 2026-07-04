@@ -5,9 +5,9 @@ mod manager. No external tools, no C++ — cross-platform by default.
 
 | Crate | Role | Status |
 |---|---|---|
-| [`ba2r`](ba2r) | Fallout 4 BA2 (`BTDX`) archive read/write | reader working, writer WIP |
-| [`esl-writer`](esl-writer) | minimal Bethesda light-master (ESL) plugin writer | stub |
-| [`vcdiff`](vcdiff) | VCDIFF (RFC 3284) binary-delta decoder | stub |
+| [`ba2r`](crates/ba2r) | Fallout 4 BA2 (`BTDX`) archive read/write | reader working, writer WIP |
+| [`esl-writer`](crates/esl-writer) | minimal Bethesda light-master (ESL) plugin writer | stub |
+| [`vcdiff`](crates/vcdiff) | VCDIFF (RFC 3284) binary-delta decoder | stub |
 
 ## Build, test, lint
 

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["ba2r", "esl-writer", "vcdiff"]
+members = ["crates/*"]
 
 [workspace.package]
 edition = "2024"
