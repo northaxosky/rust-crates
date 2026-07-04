@@ -18,6 +18,14 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 ```
 
+## Git hooks
+
+Enable the pre-commit (fmt) and pre-push (full gate) hooks per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
 ## License
 
 Dual-licensed under MIT OR Apache-2.0.

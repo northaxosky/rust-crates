@@ -1,0 +1,19 @@
+#!/bin/sh
+# Pre-push: run the full gate, mirroring CI, so a red build never reaches the remote.
+#
+# Enable per clone with:  git config core.hooksPath .githooks
+# Skip in a pinch with:    git push --no-verify
+
+set -e
+
+echo "pre-push: cargo fmt --all --check"
+cargo fmt --all --check
+
+echo "pre-push: cargo clippy --all-targets -- -D warnings"
+cargo clippy --all-targets -- -D warnings
+
+echo "pre-push: cargo build --all-targets --locked"
+cargo build --all-targets --locked
+
+echo "pre-push: cargo test --locked"
+cargo test --locked
