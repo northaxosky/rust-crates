@@ -17,6 +17,9 @@ pub enum Ba2Error {
     /// A structural invariant was violated
     #[error("malformed archive: {0}")]
     Malformed(&'static str),
+    /// A feature or encoding the reader does not support (console)
+    #[error("unsupported: {0}")]
+    Unsupported(&'static str),
     /// A compressed file or chunk failed to inflate
     #[error("zlib decompression failed")]
     Zlib(#[source] std::io::Error),

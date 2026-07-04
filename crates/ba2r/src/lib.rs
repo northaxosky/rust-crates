@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+mod dds;
 mod error;
 mod hashing;
 mod write;
@@ -77,6 +78,10 @@ pub struct Dx10Entry {
     pub num_mips: u8,
     /// DXGI format code (opaque here; not interpreted)
     pub format: u8,
+    /// Record flag bits; bit 0 set means the texture is a cubemap
+    pub flags: u8,
+    /// Texture tile mode: `8` is the std linear layout on Fallout4 PC
+    pub tile_mode: u8,
     /// The texture's mip chunks, in order
     pub chunks: Vec<Dx10Chunk>,
 }
@@ -151,24 +156,73 @@ pub fn read(bytes: &[u8]) -> Result<(Header, Entries), Ba2Error> {
 
 /// Decompress (or copy) one general-archive file's bytes out of the archive image
 pub fn extract(bytes: &[u8], entry: &GnrlEntry) -> Result<Vec<u8>, Ba2Error> {
-    let off = entry.offset as usize;
-    if entry.packed_size == 0 {
-        let end = off + entry.unpacked_size as usize;
-        bytes
-            .get(off..end)
-            .map(<[u8]>::to_vec)
-            .ok_or(Ba2Error::Malformed("file data out of bounds"))
-    } else {
-        let end = off + entry.packed_size as usize;
-        let comp = bytes
-            .get(off..end)
-            .ok_or(Ba2Error::Malformed("file data out of bounds"))?;
-        let mut out = Vec::with_capacity(entry.unpacked_size as usize);
-        flate2::read::ZlibDecoder::new(comp)
-            .read_to_end(&mut out)
-            .map_err(Ba2Error::Zlib)?;
-        Ok(out)
+    read_chunk(bytes, entry.offset, entry.packed_size, entry.unpacked_size)
+}
+
+/// Rebuild a standalone DDS file for one DX10 texture record out of the archive image
+pub fn extract_texture(bytes: &[u8], entry: &Dx10Entry) -> Result<Vec<u8>, Ba2Error> {
+    if entry.width == 0 || entry.height == 0 {
+        return Err(Ba2Error::Malformed("texture has zero dimensions"));
     }
+    if entry.chunks.is_empty() {
+        return Err(Ba2Error::Malformed("texture has no chunks"));
+    }
+    if entry.tile_mode != 8 {
+        return Err(Ba2Error::Unsupported("non-linear DX10 texture tile mode"));
+    }
+    let cubemap = entry.flags & 1 != 0;
+    let mut out = dds::header(
+        u32::from(entry.width),
+        u32::from(entry.height),
+        u32::from(entry.num_mips),
+        u32::from(entry.format),
+        cubemap,
+    );
+    for chunk in &entry.chunks {
+        let data = read_chunk(bytes, chunk.offset, chunk.packed_size, chunk.unpacked_size)?;
+        out.extend_from_slice(&data);
+    }
+    Ok(out)
+}
+
+/// Read one chunk's decompressed bytes from the archive image, checking its declared size
+fn read_chunk(
+    bytes: &[u8],
+    offset: u64,
+    packed_size: u32,
+    unpacked_size: u32,
+) -> Result<Vec<u8>, Ba2Error> {
+    let off =
+        usize::try_from(offset).map_err(|_| Ba2Error::Malformed("chunk offset out of range"))?;
+    let stored = if packed_size == 0 {
+        unpacked_size
+    } else {
+        packed_size
+    } as usize;
+    let end = off
+        .checked_add(stored)
+        .ok_or(Ba2Error::Malformed("chunk data out of bounds"))?;
+    let data = bytes
+        .get(off..end)
+        .ok_or(Ba2Error::Malformed("chunk data out of bounds"))?;
+    if packed_size == 0 {
+        Ok(data.to_vec())
+    } else {
+        inflate(data, unpacked_size)
+    }
+}
+
+/// Inflate a zlib stream and require it to expand to exactly `unpacked_size` bytes
+fn inflate(comp: &[u8], unpacked_size: u32) -> Result<Vec<u8>, Ba2Error> {
+    let mut out = Vec::new();
+    flate2::read::ZlibDecoder::new(comp)
+        .take(u64::from(unpacked_size) + 1)
+        .read_to_end(&mut out)
+        .map_err(Ba2Error::Zlib)?;
+    if out.len() != unpacked_size as usize {
+        return Err(Ba2Error::Malformed("decompressed chunk size mismatch"));
+    }
+    Ok(out)
 }
 
 fn read_names(b: &[u8], off: usize, count: usize) -> Result<Vec<Option<String>>, Ba2Error> {
@@ -228,7 +282,14 @@ fn read_dx10(b: &[u8], names: &[Option<String>]) -> Result<Vec<Dx10Entry>, Ba2Er
         if u16le(rec, 14) != 24 {
             return Err(Ba2Error::Malformed("unexpected DX10 chunk header size"));
         }
-        let (height, width, num_mips, format) = (u16le(rec, 16), u16le(rec, 18), rec[20], rec[21]);
+        let (height, width, num_mips, format, flags, tile_mode) = (
+            u16le(rec, 16),
+            u16le(rec, 18),
+            rec[20],
+            rec[21],
+            rec[22],
+            rec[23],
+        );
         p += 24;
         let mut chunks = Vec::with_capacity(num_chunks);
         for _ in 0..num_chunks {
@@ -251,6 +312,8 @@ fn read_dx10(b: &[u8], names: &[Option<String>]) -> Result<Vec<Dx10Entry>, Ba2Er
             width,
             num_mips,
             format,
+            flags,
+            tile_mode,
             chunks,
         });
     }
@@ -336,5 +399,111 @@ mod tests {
             panic!("expected general");
         };
         assert_eq!(extract(&img, &files[0]).unwrap(), payload);
+    }
+
+    // Build a one-texture DX10 archive with the given record fields and chunk payloads.
+    fn dx10_archive(
+        height: u16,
+        width: u16,
+        num_mips: u8,
+        format: u8,
+        flags: u8,
+        tile_mode: u8,
+        chunks: &[(Vec<u8>, bool)],
+    ) -> Vec<u8> {
+        let mut stored = Vec::new();
+        for (payload, compress) in chunks {
+            if *compress {
+                let comp = zlib(payload);
+                stored.push((comp.len() as u32, payload.len() as u32, comp));
+            } else {
+                stored.push((0u32, payload.len() as u32, payload.clone()));
+            }
+        }
+        let data_start = 24 + 24 + chunks.len() * 24;
+        let mut b = Vec::new();
+        b.extend_from_slice(MAGIC);
+        b.extend_from_slice(&1u32.to_le_bytes());
+        b.extend_from_slice(b"DX10");
+        b.extend_from_slice(&1u32.to_le_bytes());
+        b.extend_from_slice(&0u64.to_le_bytes());
+        b.extend_from_slice(&[0u8; 12]);
+        b.push(0);
+        b.push(chunks.len() as u8);
+        b.extend_from_slice(&24u16.to_le_bytes());
+        b.extend_from_slice(&height.to_le_bytes());
+        b.extend_from_slice(&width.to_le_bytes());
+        b.push(num_mips);
+        b.push(format);
+        b.push(flags);
+        b.push(tile_mode);
+        let mut off = data_start;
+        for (packed, unpacked, data) in &stored {
+            b.extend_from_slice(&(off as u64).to_le_bytes());
+            b.extend_from_slice(&packed.to_le_bytes());
+            b.extend_from_slice(&unpacked.to_le_bytes());
+            b.extend_from_slice(&0u16.to_le_bytes());
+            b.extend_from_slice(&0u16.to_le_bytes());
+            b.extend_from_slice(&0xBAAD_F00Du32.to_le_bytes());
+            off += data.len();
+        }
+        for (_, _, data) in &stored {
+            b.extend_from_slice(data);
+        }
+        b
+    }
+
+    #[test]
+    fn reads_and_extracts_a_texture() {
+        let mip0 = vec![0xABu8; 64];
+        let mip1 = vec![0xCDu8; 16];
+        let img = dx10_archive(
+            64,
+            64,
+            2,
+            98,
+            0,
+            8,
+            &[(mip0.clone(), false), (mip1.clone(), true)],
+        );
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::Texture(textures) = entries else {
+            panic!("expected texture");
+        };
+        assert_eq!(textures.len(), 1);
+        let dds = extract_texture(&img, &textures[0]).unwrap();
+        assert_eq!(&dds[0..4], b"DDS ");
+        assert_eq!(u32le(&dds, 0x0C), 64);
+        assert_eq!(u32le(&dds, 0x10), 64);
+        assert_eq!(u32le(&dds, 0x80), 98);
+        let mut payload = mip0;
+        payload.extend_from_slice(&mip1);
+        assert_eq!(&dds[148..], &payload[..]);
+    }
+
+    #[test]
+    fn rejects_a_tiled_texture() {
+        let img = dx10_archive(64, 64, 1, 98, 0, 0, &[(vec![0u8; 64], false)]);
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::Texture(textures) = entries else {
+            panic!("expected texture");
+        };
+        assert!(matches!(
+            extract_texture(&img, &textures[0]),
+            Err(Ba2Error::Unsupported(_))
+        ));
+    }
+
+    #[test]
+    fn extracts_a_cubemap_header() {
+        let img = dx10_archive(32, 32, 1, 98, 1, 8, &[(vec![0u8; 64], false)]);
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::Texture(textures) = entries else {
+            panic!("expected texture");
+        };
+        assert_eq!(textures[0].flags, 1);
+        let dds = extract_texture(&img, &textures[0]).unwrap();
+        assert_eq!(u32le(&dds, 0x70), 0xFE00);
+        assert_eq!(u32le(&dds, 0x88), 0x4);
     }
 }
