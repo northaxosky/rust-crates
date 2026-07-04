@@ -1,13 +1,19 @@
-//! Pure-Rust reader for Fallout 4 Bethesda archives (BA2, magic `BTDX`).
+//! Pure-Rust reader and writer for Fallout 4 Bethesda archives (BA2, magic `BTDX`).
 //!
 //! Handles the general (`GNRL`) and texture (`DX10`) variants across FO4 versions v1 (Old-Gen) and
-//! v7/v8 (Next-Gen). Reading is verified byte-exact against the `ba2` crate on real archives; writing
-//! is not yet implemented (see the workspace `AGENTS.md`).
+//! v7/v8 (Next-Gen). Reading is verified byte-exact against the `ba2` crate on real archives; the
+//! writer emits version-1 `GNRL` archives (see [`GnrlWriter`]).
 
 #![forbid(unsafe_code)]
 
+mod error;
+mod hashing;
+mod write;
+
+pub use error::{Ba2Error, Ba2WriteError};
+pub use write::GnrlWriter;
+
 use std::io::Read;
-use thiserror::Error;
 
 const MAGIC: &[u8; 4] = b"BTDX";
 
@@ -97,29 +103,6 @@ pub enum Entries {
     General(Vec<GnrlEntry>),
     /// A `DX10` archive's textures
     Texture(Vec<Dx10Entry>),
-}
-
-/// Why a BA2 could not be read
-#[derive(Debug, Error)]
-pub enum Ba2Error {
-    /// The buffer ended before a required structure could be read
-    #[error("buffer is too short to hold a BA2 {what}")]
-    TooShort {
-        /// The structure that overran the buffer
-        what: &'static str,
-    },
-    /// The buffer did not begin with the `BTDX` magic
-    #[error("not a BA2 archive (missing BTDX magic)")]
-    BadMagic,
-    /// The archive type tag is neither `GNRL` nor `DX10`
-    #[error("unsupported archive type {0:?}")]
-    UnsupportedType([u8; 4]),
-    /// A structural invariant was violated
-    #[error("malformed archive: {0}")]
-    Malformed(&'static str),
-    /// A compressed file or chunk failed to inflate
-    #[error("zlib decompression failed")]
-    Zlib(#[source] std::io::Error),
 }
 
 fn u16le(b: &[u8], o: usize) -> u16 {
