@@ -180,7 +180,7 @@ impl GnrlWriter {
         let (name, hash) = hash_file(path);
         if name.is_empty() {
             return Err(Ba2WriteError::InvalidPath {
-                reason: "path is empty or only seperators",
+                reason: "path is empty or only separator",
             });
         }
         if name.len() >= MAX_PATH_LEN {
