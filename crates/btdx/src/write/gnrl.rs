@@ -417,6 +417,23 @@ mod tests {
         assert_eq!(sink, w.to_vec().unwrap());
     }
 
+    struct FailingSink;
+    impl std::io::Write for FailingSink {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("sink is closed"))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn write_propagates_a_sink_error() {
+        let mut w = GnrlWriter::new();
+        w.add_file_stored("a.txt", b"hi".to_vec()).unwrap();
+        assert!(matches!(w.write(&mut FailingSink), Err(WriteError::Io(_))));
+    }
+
     #[test]
     fn writes_are_deterministic() {
         let build = || {

@@ -713,6 +713,17 @@ mod tests {
     }
 
     #[test]
+    fn a_non_zlib_chunk_is_a_zlib_error() {
+        let garbage = vec![0xFFu8; 20];
+        let img = gnrl_archive("a.bin", &garbage, garbage.len() as u32, 100);
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::General(files) = entries else {
+            panic!("expected general");
+        };
+        assert!(matches!(extract(&img, &files[0]), Err(ReadError::Zlib(_))));
+    }
+
+    #[test]
     fn reads_a_multi_chunk_texture() {
         let mip0 = vec![1u8; 100];
         let mip1 = vec![2u8; 20];

@@ -476,6 +476,30 @@ mod tests {
         assert_eq!(mip_size(8, 8, 250), None);
     }
 
+    #[test]
+    fn mip_size_sizes_uncompressed_formats() {
+        assert_eq!(mip_size(8, 8, 85), Some(128));
+        assert_eq!(mip_size(8, 8, 61), Some(64));
+    }
+
+    #[test]
+    fn parses_the_block_format_matrix() {
+        for (dxgi, block) in [
+            (71u32, 8u64),
+            (74, 16),
+            (77, 16),
+            (80, 8),
+            (83, 16),
+            (98, 16),
+        ] {
+            let mut dds = header(16, 16, 1, dxgi, false);
+            dds.extend(vec![0u8; (16 * block) as usize]);
+            let t = parse(&dds).unwrap();
+            assert_eq!(t.dxgi, dxgi as u8);
+            assert_eq!((t.width, t.height, t.mip_count), (16, 16, 1));
+        }
+    }
+
     // Build a DDS-shaped blob: valid magic and sizes, random dimensions/format/payload.
     fn arbitrary_dds() -> impl Strategy<Value = Vec<u8>> {
         (
