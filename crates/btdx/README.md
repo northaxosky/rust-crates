@@ -31,7 +31,7 @@ and `flate2`.
 
 ## Read and extract
 
-```rust
+```rust,no_run
 use btdx::{read, extract, extract_texture, Entries};
 
 let bytes = std::fs::read("Fallout4 - Textures1.ba2").unwrap();
@@ -42,13 +42,13 @@ match entries {
     Entries::General(files) => {
         for f in &files {
             let data = extract(&bytes, f).unwrap();
-            // write `data` to disk under `f.path`
+            println!("{} ({} bytes)", f.path.as_deref().unwrap_or("?"), data.len());
         }
     }
     Entries::Texture(textures) => {
         for t in &textures {
             let dds = extract_texture(&bytes, t).unwrap();
-            // `dds` is a complete DDS file, ready to save
+            println!("{} ({} bytes)", t.path.as_deref().unwrap_or("?"), dds.len());
         }
     }
 }
@@ -56,8 +56,11 @@ match entries {
 
 ## Write a general archive
 
-```rust
+```rust,no_run
 use btdx::GnrlWriter;
+
+let nif_bytes = std::fs::read("weapon.nif").unwrap();
+let pex_bytes = std::fs::read("quest.pex").unwrap();
 
 let mut w = GnrlWriter::new();
 w.add_file("Meshes\\weapon.nif", nif_bytes).unwrap();      // zlib-compressed
@@ -68,8 +71,10 @@ std::fs::write("MyMod - Main.ba2", archive).unwrap();
 
 ## Write a texture archive
 
-```rust
+```rust,no_run
 use btdx::Dx10Writer;
+
+let dds_bytes = std::fs::read("armor_d.dds").unwrap();
 
 let mut w = Dx10Writer::new();
 w.add_texture("Textures\\armor_d.dds", dds_bytes).unwrap(); // parsed and split
