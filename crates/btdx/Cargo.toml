@@ -1,6 +1,6 @@
 [package]
 name = "btdx"
-version = "0.2.0"
+version = "0.3.0"
 description = "Pure-Rust reader and writer for Fallout 4 and Starfield Bethesda archives (BA2 / BTDX)"
 authors.workspace = true
 edition.workspace = true
