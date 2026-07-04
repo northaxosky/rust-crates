@@ -1,0 +1,13 @@
+[package]
+name = "ba2r"
+description = "Pure-Rust reader and writer for Fallout 4 Bethesda archives (BA2 / BTDX)"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+thiserror.workspace = true
+flate2.workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "esl-writer"
+description = "Pure-Rust writer for minimal Bethesda light-master (ESL) carrier plugins"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+thiserror.workspace = true

@@ -1,0 +1,12 @@
+[package]
+name = "vcdiff"
+description = "Pure-Rust VCDIFF (RFC 3284) decoder for xdelta3-style binary deltas"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+thiserror.workspace = true
