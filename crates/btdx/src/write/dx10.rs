@@ -1,9 +1,11 @@
-//! Writer for Fallout 4 version-1 DX10 (`BTDX`) texture archives.
+//! Writer for Fallout 4 and Starfield DX10 (`BTDX`) texture archives.
 //!
-//! Packs `.dds` files into Old-Gen (`version = 1`) texture archives, splitting each texture's mips
-//! into chunks with the Archive2 512x512 rule (cubemaps stay one chunk) and zlib-compressing them.
+//! Packs `.dds` files into texture archives, splitting each texture's mips into chunks with the
+//! Archive2 512x512 rule (cubemaps stay one chunk) and compressing them. The [`Ba2Format`] selects
+//! the version and codec: Fallout 4 version 1 (zlib, the default), Starfield version 2 (zlib), or
+//! Starfield version 3 (LZ4).
 
-use super::{CHUNK_SENTINEL, HEADER_SIZE, MAGIC, MAX_PATH_LEN, lossy, zlib_compress};
+use super::{Ba2Format, CHUNK_SENTINEL, MAX_PATH_LEN, compress, lossy, write_header};
 use crate::dds::{self, ParsedTexture};
 use crate::error::WriteError;
 use crate::hashing::{FileHash, hash_file};
@@ -45,26 +47,34 @@ struct PreparedChunk {
     bytes: Vec<u8>,
 }
 
-/// Builds a version-1 DX10 texture BA2 archive from DDS files
+/// Builds a DX10 texture BA2 archive from DDS files
 pub struct Dx10Writer {
     entries: Vec<TextureEntry>,
     seen: HashMap<FileHash, Vec<u8>>,
     write_names: bool,
+    format: Ba2Format,
 }
 
 impl Dx10Writer {
-    /// Create an empty writer that emits a version-1 DX10 archive with a name table
+    /// Create an empty writer that emits a Fallout 4 v1 DX10 archive with a name table
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
             seen: HashMap::new(),
             write_names: true,
+            format: Ba2Format::Fo4,
         }
     }
 
     /// Enable or disable the trailing name table (on by default)
     pub fn names(&mut self, enabled: bool) -> &mut Self {
         self.write_names = enabled;
+        self
+    }
+
+    /// Select the output format: version and archive-wide codec (default [`Ba2Format::Fo4`])
+    pub fn format(&mut self, format: Ba2Format) -> &mut Self {
+        self.format = format;
         self
     }
 
@@ -91,11 +101,12 @@ impl Dx10Writer {
                         path: lossy(&entry.name),
                         size: chunk.data.len(),
                     })?;
-                let compressed =
-                    zlib_compress(&chunk.data).map_err(|source| WriteError::ZlibCompress {
+                let compressed = compress(self.format, &chunk.data).map_err(|source| {
+                    WriteError::ZlibCompress {
                         path: lossy(&entry.name),
                         source,
-                    })?;
+                    }
+                })?;
                 let packed =
                     u32::try_from(compressed.len()).map_err(|_| WriteError::FileTooLarge {
                         path: lossy(&entry.name),
@@ -120,7 +131,9 @@ impl Dx10Writer {
                 .ok_or(WriteError::OffsetOverflow)?;
             records = records.checked_add(per).ok_or(WriteError::OffsetOverflow)?;
         }
-        let data_start = HEADER_SIZE
+        let data_start = self
+            .format
+            .header_size()
             .checked_add(records)
             .ok_or(WriteError::OffsetOverflow)?;
 
@@ -141,11 +154,7 @@ impl Dx10Writer {
         };
 
         let mut out = Vec::new();
-        out.extend_from_slice(MAGIC);
-        out.extend_from_slice(&1u32.to_le_bytes());
-        out.extend_from_slice(DX10);
-        out.extend_from_slice(&file_count.to_le_bytes());
-        out.extend_from_slice(&names_offset.to_le_bytes());
+        write_header(&mut out, self.format, DX10, file_count, names_offset);
 
         let mut data_off = data_start;
         for (entry, chunks) in self.entries.iter().zip(&prepared) {
@@ -314,7 +323,7 @@ fn split_chunks(texture: &ParsedTexture<'_>) -> Vec<RawChunk> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Archive, Dx10Entry, Entries};
+    use crate::{Archive, Ba2Format, Dx10Entry, Entries};
     use proptest::prelude::*;
 
     // Thin adapters over the Archive container, so the round-trip tests read unchanged.
@@ -509,13 +518,65 @@ mod tests {
         assert_eq!(extract_texture(&img, &textures[0]).unwrap(), dds);
     }
 
+    #[test]
+    fn writes_a_starfield_v3_lz4_texture() {
+        let total = total_size(64, 64, 3, 71);
+        let dds = dx10_dds(64, 64, 3, 71, false, total);
+        let mut w = Dx10Writer::new();
+        w.format(Ba2Format::StarfieldV3Lz4);
+        w.add_texture("Textures\\a.dds", dds.clone()).unwrap();
+        let img = w.to_vec().unwrap();
+        assert_eq!(u32le(&img, 4), 3);
+        assert_eq!(u64le(&img, 24), 1);
+        assert_eq!(u32le(&img, 32), 3);
+        let (header, entries) = read(&img).unwrap();
+        assert_eq!(header.version, 3);
+        let Entries::Texture(textures) = entries else {
+            panic!("expected texture");
+        };
+        assert_eq!(extract_texture(&img, &textures[0]).unwrap(), dds);
+    }
+
+    #[test]
+    fn writes_a_starfield_v2_texture() {
+        let total = total_size(32, 32, 1, 71);
+        let dds = dx10_dds(32, 32, 1, 71, false, total);
+        let mut w = Dx10Writer::new();
+        w.format(Ba2Format::StarfieldV2);
+        w.add_texture("Textures\\b.dds", dds.clone()).unwrap();
+        let img = w.to_vec().unwrap();
+        assert_eq!(u32le(&img, 4), 2);
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::Texture(textures) = entries else {
+            panic!("expected texture");
+        };
+        assert_eq!(extract_texture(&img, &textures[0]).unwrap(), dds);
+    }
+
+    #[test]
+    fn writes_the_v3_first_chunk_offset() {
+        let total = total_size(16, 16, 1, 71);
+        let dds = dx10_dds(16, 16, 1, 71, false, total);
+        let mut w = Dx10Writer::new();
+        w.format(Ba2Format::StarfieldV3Lz4);
+        w.add_texture("a.dds", dds).unwrap();
+        let img = w.to_vec().unwrap();
+        let data_start = 36 + 24 + 24;
+        assert_eq!(u64le(&img, 36 + 24), data_start as u64);
+    }
+
     proptest! {
-        // DX10-extended DDS textures survive write -> read -> extract byte for byte.
+        // DX10-extended DDS textures survive write -> read -> extract byte for byte, in every format.
         #[test]
         fn dx10_round_trips(
             dim_exp in 3u32..8,
             fmt in prop::sample::select(vec![71u32, 74, 77, 80, 83, 98]),
             fill in any::<u8>(),
+            format in prop::sample::select(vec![
+                Ba2Format::Fo4,
+                Ba2Format::StarfieldV2,
+                Ba2Format::StarfieldV3Lz4,
+            ]),
         ) {
             let side = 1u32 << dim_exp;
             let mips = 32 - side.leading_zeros();
@@ -524,6 +585,7 @@ mod tests {
             let start = dds.len();
             dds.resize(start + total, fill);
             let mut w = Dx10Writer::new();
+            w.format(format);
             w.add_texture("Textures\\z.dds", dds.clone()).unwrap();
             let img = w.to_vec().unwrap();
             let (_h, entries) = read(&img).unwrap();

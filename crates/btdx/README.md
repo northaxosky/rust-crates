@@ -13,9 +13,10 @@ Pure-Rust reader and writer for Fallout 4 and Starfield Bethesda archives (BA2, 
   which `btdx` reassembles into standard DDS files on extraction.
 
 It reads Fallout 4 archives (versions 1, 7, and 8, zlib) and Starfield archives
-(versions 2 and 3, zlib or LZ4), and writes version-1 Fallout 4 archives, which
-load on every Fallout 4 build. There is no `unsafe` and no C dependency: just
-`thiserror`, `flate2`, and the pure-Rust `lz4_flex`.
+(versions 2 and 3, zlib or LZ4). It writes Fallout 4 version-1 archives and
+Starfield version-2 (zlib) and version-3 (LZ4) archives, selected with
+`Ba2Format`. There is no `unsafe` and no C dependency: just `thiserror`,
+`flate2`, and the pure-Rust `lz4_flex`.
 
 ## Features
 
@@ -73,11 +74,12 @@ std::fs::write("MyMod - Main.ba2", archive).unwrap();
 ## Write a texture archive
 
 ```rust,no_run
-use btdx::Dx10Writer;
+use btdx::{Ba2Format, Dx10Writer};
 
 let dds_bytes = std::fs::read("armor_d.dds").unwrap();
 
 let mut w = Dx10Writer::new();
+w.format(Ba2Format::StarfieldV3Lz4);           // or Fo4 (default), StarfieldV2
 w.add_texture("Textures\\armor_d.dds", dds_bytes).unwrap(); // parsed and split
 let archive = w.to_vec().unwrap();
 std::fs::write("MyMod - Textures.ba2", archive).unwrap();
@@ -95,8 +97,8 @@ std::fs::write("MyMod - Textures.ba2", archive).unwrap();
 
 ## Limitations
 
-- Reads Fallout 4 and Starfield; writing currently emits Fallout 4 version-1
-  archives only. The older BSA format is out of scope.
+- Writing targets the formats the games ship (Fallout 4 v1, Starfield v2/v3);
+  the older BSA format is out of scope.
 - Console (Xbox) texture swizzling is rejected on read rather than unswizzled.
 
 ## License

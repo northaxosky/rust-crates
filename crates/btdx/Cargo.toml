@@ -18,4 +18,3 @@ lz4_flex.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-lz4_flex = { workspace = true, features = ["safe-encode"] }

@@ -1,11 +1,11 @@
-//! Writer for Fallout 4 version-1 GNRL (`BTDX`) archives.
+//! Writer for Fallout 4 and Starfield GNRL (`BTDX`) general archives.
 //!
-//! Emits Old-Gen (`version = 1`) general archives with correct CRC hashes and either zlib-compressed
-//! or stored files, so the Fallout 4 engine indexes and loads their contents (both Old-Gen and
-//! Next-Gen load version 1). This writer only ever emits version-1 GNRL with zlib/stored data; it
-//! never writes DX10/GNMF textures, LZ4 compression, or the v2/v3/v7/v8 header variants.
+//! Emits general archives with correct CRC hashes and either compressed or stored files, so the
+//! engine indexes and loads their contents. The [`Ba2Format`] selects the version and codec: Fallout
+//! 4 version 1 (zlib, the default), Starfield version 2 (zlib), or Starfield version 3 (LZ4). This
+//! writer never emits DX10 textures.
 
-use super::{CHUNK_SENTINEL, HEADER_SIZE, MAGIC, MAX_PATH_LEN, lossy, zlib_compress};
+use super::{Ba2Format, CHUNK_SENTINEL, MAX_PATH_LEN, compress, lossy, write_header};
 use crate::error::WriteError;
 use crate::hashing::{FileHash, hash_file};
 use std::collections::HashMap;
@@ -29,26 +29,34 @@ struct Block {
     bytes: Vec<u8>,
 }
 
-/// Builds a version-1 GNRL BA2 archive in memory
+/// Builds a GNRL BA2 archive in memory
 pub struct GnrlWriter {
     entries: Vec<Entry>,
     seen: HashMap<FileHash, Vec<u8>>,
     write_names: bool,
+    format: Ba2Format,
 }
 
 impl GnrlWriter {
-    /// Create an empty writer that emits a v1 GNRL archive with a name table
+    /// Create an empty writer that emits a Fallout 4 v1 GNRL archive with a name table
     pub fn new() -> Self {
         Self {
             entries: Vec::new(),
             seen: HashMap::new(),
             write_names: true,
+            format: Ba2Format::Fo4,
         }
     }
 
     /// Enable or disable the trailing name table (default=on)
     pub fn names(&mut self, enabled: bool) -> &mut Self {
         self.write_names = enabled;
+        self
+    }
+
+    /// Select the output format: version and archive-wide codec (default [`Ba2Format::Fo4`])
+    pub fn format(&mut self, format: Ba2Format) -> &mut Self {
+        self.format = format;
         self
     }
 
@@ -83,11 +91,12 @@ impl GnrlWriter {
                 })?;
 
             let (packed, bytes) = if entry.compress {
-                let compressed =
-                    zlib_compress(&entry.data).map_err(|source| WriteError::ZlibCompress {
+                let compressed = compress(self.format, &entry.data).map_err(|source| {
+                    WriteError::ZlibCompress {
                         path: lossy(&entry.name),
                         source,
-                    })?;
+                    }
+                })?;
                 let packed =
                     u32::try_from(compressed.len()).map_err(|_| WriteError::FileTooLarge {
                         path: lossy(&entry.name),
@@ -107,7 +116,9 @@ impl GnrlWriter {
         let records = RECORD_SIZE
             .checked_mul(self.entries.len() as u64)
             .ok_or(WriteError::OffsetOverflow)?;
-        let data_start = HEADER_SIZE
+        let data_start = self
+            .format
+            .header_size()
             .checked_add(records)
             .ok_or(WriteError::OffsetOverflow)?;
 
@@ -127,11 +138,7 @@ impl GnrlWriter {
         };
 
         let mut out = Vec::new();
-        out.extend_from_slice(MAGIC);
-        out.extend_from_slice(&1u32.to_le_bytes());
-        out.extend_from_slice(GNRL);
-        out.extend_from_slice(&file_count.to_le_bytes());
-        out.extend_from_slice(&names_offset.to_le_bytes());
+        write_header(&mut out, self.format, GNRL, file_count, names_offset);
 
         let mut data_off = data_start;
         for (entry, block) in self.entries.iter().zip(&blocks) {
@@ -223,7 +230,7 @@ impl Default for GnrlWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Archive, Entries, GnrlEntry};
+    use crate::{Archive, Ba2Format, Compression, Entries, GnrlEntry};
     use proptest::prelude::*;
 
     // Thin adapters over the Archive container, so the round-trip tests read unchanged.
@@ -421,16 +428,151 @@ mod tests {
         assert_eq!(build(), build());
     }
 
+    #[test]
+    fn writes_a_starfield_v2_header() {
+        let mut w = GnrlWriter::new();
+        w.format(Ba2Format::StarfieldV2);
+        w.add_file_stored("a.txt", b"hi".to_vec()).unwrap();
+        let img = w.to_vec().unwrap();
+        assert_eq!(u32le(&img, 4), 2);
+        assert_eq!(u64le(&img, 24), 1);
+        let data_offset = 32 + 36;
+        assert_eq!(u64le(&img, 16), (data_offset + 2) as u64);
+        assert_eq!(u64le(&img, 32 + 16), data_offset as u64);
+        let (header, _entries) = read(&img).unwrap();
+        assert_eq!(header.version, 2);
+        assert_eq!(header.compression, Compression::Zlib);
+    }
+
+    #[test]
+    fn writes_a_starfield_v3_lz4_header() {
+        let mut w = GnrlWriter::new();
+        w.format(Ba2Format::StarfieldV3Lz4);
+        w.add_file("a.bin", vec![7u8; 64]).unwrap();
+        let img = w.to_vec().unwrap();
+        assert_eq!(u32le(&img, 4), 3);
+        assert_eq!(u64le(&img, 24), 1);
+        assert_eq!(u32le(&img, 32), 3);
+        let (header, _entries) = read(&img).unwrap();
+        assert_eq!(header.version, 3);
+        assert_eq!(header.compression, Compression::Lz4);
+    }
+
+    #[test]
+    fn v3_lz4_round_trips_via_reader() {
+        let payload = b"the quick brown fox".repeat(8);
+        let mut w = GnrlWriter::new();
+        w.format(Ba2Format::StarfieldV3Lz4);
+        w.add_file("Scripts\\q.pex", payload.clone()).unwrap();
+        let img = w.to_vec().unwrap();
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::General(files) = entries else {
+            panic!("expected general");
+        };
+        assert_ne!(files[0].packed_size, 0);
+        assert_eq!(extract(&img, &files[0]).unwrap(), payload);
+    }
+
+    #[test]
+    fn v3_lz4_stored_entry_round_trips() {
+        let mut w = GnrlWriter::new();
+        w.format(Ba2Format::StarfieldV3Lz4);
+        w.add_file_stored("a.bin", b"stored".to_vec()).unwrap();
+        let img = w.to_vec().unwrap();
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::General(files) = entries else {
+            panic!("expected general");
+        };
+        assert_eq!(files[0].packed_size, 0);
+        assert_eq!(extract(&img, &files[0]).unwrap(), b"stored");
+    }
+
+    #[test]
+    fn format_is_applied_at_serialization() {
+        let mut w = GnrlWriter::new();
+        w.add_file_stored("a.txt", b"hi".to_vec()).unwrap();
+        w.format(Ba2Format::StarfieldV2);
+        assert_eq!(u32le(&w.to_vec().unwrap(), 4), 2);
+    }
+
+    #[test]
+    fn empty_starfield_archives_are_header_only() {
+        let mut v2 = GnrlWriter::new();
+        v2.format(Ba2Format::StarfieldV2);
+        let v2 = v2.to_vec().unwrap();
+        assert_eq!(v2.len(), 32);
+        assert_eq!(u32le(&v2, 4), 2);
+        assert_eq!(u64le(&v2, 16), 0);
+
+        let mut v3 = GnrlWriter::new();
+        v3.format(Ba2Format::StarfieldV3Lz4);
+        let v3 = v3.to_vec().unwrap();
+        assert_eq!(v3.len(), 36);
+        assert_eq!(u32le(&v3, 4), 3);
+        assert_eq!(u32le(&v3, 32), 3);
+        assert_eq!(u64le(&v3, 16), 0);
+    }
+
+    #[test]
+    fn lz4_round_trips_an_empty_file() {
+        let mut w = GnrlWriter::new();
+        w.format(Ba2Format::StarfieldV3Lz4);
+        w.add_file("a.bin", Vec::new()).unwrap();
+        let img = w.to_vec().unwrap();
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::General(files) = entries else {
+            panic!("expected general");
+        };
+        assert_eq!(extract(&img, &files[0]).unwrap(), b"");
+    }
+
+    #[test]
+    fn lz4_round_trips_incompressible_data() {
+        let payload: Vec<u8> = (0..1000u32)
+            .map(|i| i.wrapping_mul(2654435761) as u8)
+            .collect();
+        let mut w = GnrlWriter::new();
+        w.format(Ba2Format::StarfieldV3Lz4);
+        w.add_file("a.bin", payload.clone()).unwrap();
+        let img = w.to_vec().unwrap();
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::General(files) = entries else {
+            panic!("expected general");
+        };
+        assert_eq!(extract(&img, &files[0]).unwrap(), payload);
+    }
+
+    #[test]
+    fn names_disabled_under_starfield_v2() {
+        let mut w = GnrlWriter::new();
+        w.format(Ba2Format::StarfieldV2).names(false);
+        w.add_file_stored("a.txt", b"hi".to_vec()).unwrap();
+        let img = w.to_vec().unwrap();
+        assert_eq!(u64le(&img, 16), 0);
+        assert_eq!(img.len(), 32 + 36 + 2);
+        let (_h, entries) = read(&img).unwrap();
+        let Entries::General(files) = entries else {
+            panic!("expected general");
+        };
+        assert_eq!(files[0].path, None);
+    }
+
     proptest! {
-        // Any set of unique files survives a write -> read -> extract round trip.
+        // Any set of unique files survives a write -> read -> extract round trip, in every format.
         #[test]
         fn gnrl_round_trips(
             files in proptest::collection::vec(
                 (proptest::collection::vec(any::<u8>(), 0..64), any::<bool>()),
                 0..8,
             ),
+            format in prop::sample::select(vec![
+                Ba2Format::Fo4,
+                Ba2Format::StarfieldV2,
+                Ba2Format::StarfieldV3Lz4,
+            ]),
         ) {
             let mut w = GnrlWriter::new();
+            w.format(format);
             for (i, (data, compress)) in files.iter().enumerate() {
                 let path = format!("Data\\file{i}.bin");
                 if *compress {
