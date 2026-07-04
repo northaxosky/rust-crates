@@ -1,12 +1,15 @@
 [package]
 name = "btdx"
-description = "Pure-Rust reader and writer for Fallout 4 Bethesda archives (BA2 / BTDX)"
 version = "0.1.0"
+description = "Pure-Rust reader and writer for Fallout 4 Bethesda archives (BA2 / BTDX)"
+authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+readme = "README.md"
+keywords = ["ba2", "btdx", "fallout", "bethesda", "archive"]
+categories = ["game-development", "parser-implementations"]
 
 [dependencies]
 thiserror.workspace = true
