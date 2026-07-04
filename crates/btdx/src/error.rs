@@ -4,7 +4,8 @@ use thiserror::Error;
 
 /// Why a BA2 could not be read
 #[derive(Debug, Error)]
-pub enum Error {
+#[non_exhaustive]
+pub enum ReadError {
     /// The buffer ended before a required structure could be read
     #[error("buffer is too short to hold a BA2 {what}")]
     TooShort { what: &'static str },
@@ -23,10 +24,23 @@ pub enum Error {
     /// A compressed file or chunk failed to inflate
     #[error("zlib decompression failed")]
     Zlib(#[source] std::io::Error),
+    /// The archive `version` field is not one this crate supports
+    #[error("unsupported BA2 version {0}")]
+    UnsupportedVersion(u32),
+    /// The v3 `compression_method` field is not one this crate supports
+    #[error("unsupported BA2 compression method {0}")]
+    UnsupportedCompression(u32),
+    /// A chunk's declared decompressed size exceeds the safety limit
+    #[error("chunk decompressed size {size} exceeds the {limit}-byte limit")]
+    TooLarge { size: u64, limit: u64 },
+    /// A compressed file or chunk failed to LZ4-decode
+    #[error("LZ4 block decompression failed")]
+    Lz4,
 }
 
 /// Why a GNRL archive could not be written
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum WriteError {
     /// A path was empty, only separators, or too long after normalization
     #[error("invalid archive path: {reason}")]
@@ -63,6 +77,7 @@ pub enum WriteError {
 
 /// Why a DDS texture could not be parsed for packing into a DX10 archive
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum DdsError {
     /// The data did not begin with the `DDS ` magic
     #[error("not a DDS file")]

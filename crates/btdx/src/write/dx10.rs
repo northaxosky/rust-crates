@@ -314,8 +314,17 @@ fn split_chunks(texture: &ParsedTexture<'_>) -> Vec<RawChunk> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Entries, extract_texture, read};
+    use crate::{Archive, Dx10Entry, Entries};
     use proptest::prelude::*;
+
+    // Thin adapters over the Archive container, so the round-trip tests read unchanged.
+    fn read(bytes: &[u8]) -> Result<(crate::Header, Entries), crate::ReadError> {
+        let a = Archive::read(bytes)?;
+        Ok((*a.header(), a.entries().clone()))
+    }
+    fn extract_texture(bytes: &[u8], entry: &Dx10Entry) -> Result<Vec<u8>, crate::ReadError> {
+        Archive::read(bytes)?.extract_texture(entry)
+    }
 
     fn u16le(b: &[u8], o: usize) -> u16 {
         u16::from_le_bytes([b[o], b[o + 1]])

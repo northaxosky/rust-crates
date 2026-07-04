@@ -13,6 +13,10 @@ repository = "https://github.com/northaxosky/rust-crates"
 thiserror = "2"
 flate2 = "1"
 proptest = "1"
+lz4_flex = { version = "0.11", default-features = false, features = [
+    "std",
+    "safe-decode",
+] }
 
 [profile.release]
 opt-level = 2

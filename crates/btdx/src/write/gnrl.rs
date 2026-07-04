@@ -223,8 +223,17 @@ impl Default for GnrlWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Entries, extract, read};
+    use crate::{Archive, Entries, GnrlEntry};
     use proptest::prelude::*;
+
+    // Thin adapters over the Archive container, so the round-trip tests read unchanged.
+    fn read(bytes: &[u8]) -> Result<(crate::Header, Entries), crate::ReadError> {
+        let a = Archive::read(bytes)?;
+        Ok((*a.header(), a.entries().clone()))
+    }
+    fn extract(bytes: &[u8], entry: &GnrlEntry) -> Result<Vec<u8>, crate::ReadError> {
+        Archive::read(bytes)?.extract(entry)
+    }
 
     fn u16le(b: &[u8], o: usize) -> u16 {
         u16::from_le_bytes([b[o], b[o + 1]])

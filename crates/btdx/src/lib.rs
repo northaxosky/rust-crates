@@ -7,8 +7,8 @@ mod hashing;
 mod read;
 mod write;
 
-pub use error::{DdsError, Error, WriteError};
+pub use error::{DdsError, ReadError, WriteError};
 pub use read::{
-    ArchiveKind, Dx10Chunk, Dx10Entry, Entries, GnrlEntry, Header, extract, extract_texture, read,
+    Archive, ArchiveKind, Compression, Dx10Chunk, Dx10Entry, Entries, GnrlEntry, Header,
 };
 pub use write::{Dx10Writer, GnrlWriter};

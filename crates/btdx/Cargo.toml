@@ -1,7 +1,7 @@
 [package]
 name = "btdx"
-version = "0.1.0"
-description = "Pure-Rust reader and writer for Fallout 4 Bethesda archives (BA2 / BTDX)"
+version = "0.2.0"
+description = "Pure-Rust reader and writer for Fallout 4 and Starfield Bethesda archives (BA2 / BTDX)"
 authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,6 +14,8 @@ categories = ["game-development", "parser-implementations"]
 [dependencies]
 thiserror.workspace = true
 flate2.workspace = true
+lz4_flex.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+lz4_flex = { workspace = true, features = ["safe-encode"] }
