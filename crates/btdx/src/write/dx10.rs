@@ -5,7 +5,7 @@
 
 use super::{CHUNK_SENTINEL, HEADER_SIZE, MAGIC, MAX_PATH_LEN, lossy, zlib_compress};
 use crate::dds::{self, ParsedTexture};
-use crate::error::Ba2WriteError;
+use crate::error::WriteError;
 use crate::hashing::{FileHash, hash_file};
 use std::collections::HashMap;
 use std::io::Write;
@@ -73,31 +73,31 @@ impl Dx10Writer {
         &mut self,
         path: impl AsRef<[u8]>,
         dds: impl Into<Vec<u8>>,
-    ) -> Result<(), Ba2WriteError> {
+    ) -> Result<(), WriteError> {
         self.push(path.as_ref(), dds.into())
     }
 
     /// Serialize the archive into a new byte buffer
-    pub fn to_vec(&self) -> Result<Vec<u8>, Ba2WriteError> {
+    pub fn to_vec(&self) -> Result<Vec<u8>, WriteError> {
         let file_count = u32::try_from(self.entries.len())
-            .map_err(|_| Ba2WriteError::TooManyFiles(self.entries.len()))?;
+            .map_err(|_| WriteError::TooManyFiles(self.entries.len()))?;
 
         let mut prepared: Vec<Vec<PreparedChunk>> = Vec::with_capacity(self.entries.len());
         for entry in &self.entries {
             let mut chunks = Vec::with_capacity(entry.chunks.len());
             for chunk in &entry.chunks {
                 let unpacked =
-                    u32::try_from(chunk.data.len()).map_err(|_| Ba2WriteError::FileTooLarge {
+                    u32::try_from(chunk.data.len()).map_err(|_| WriteError::FileTooLarge {
                         path: lossy(&entry.name),
                         size: chunk.data.len(),
                     })?;
                 let compressed =
-                    zlib_compress(&chunk.data).map_err(|source| Ba2WriteError::ZlibCompress {
+                    zlib_compress(&chunk.data).map_err(|source| WriteError::ZlibCompress {
                         path: lossy(&entry.name),
                         source,
                     })?;
                 let packed =
-                    u32::try_from(compressed.len()).map_err(|_| Ba2WriteError::FileTooLarge {
+                    u32::try_from(compressed.len()).map_err(|_| WriteError::FileTooLarge {
                         path: lossy(&entry.name),
                         size: compressed.len(),
                     })?;
@@ -117,27 +117,25 @@ impl Dx10Writer {
             let per = DX10_CHUNK_SIZE
                 .checked_mul(chunks.len() as u64)
                 .and_then(|c| c.checked_add(DX10_FILE_HEADER_SIZE))
-                .ok_or(Ba2WriteError::OffsetOverflow)?;
-            records = records
-                .checked_add(per)
-                .ok_or(Ba2WriteError::OffsetOverflow)?;
+                .ok_or(WriteError::OffsetOverflow)?;
+            records = records.checked_add(per).ok_or(WriteError::OffsetOverflow)?;
         }
         let data_start = HEADER_SIZE
             .checked_add(records)
-            .ok_or(Ba2WriteError::OffsetOverflow)?;
+            .ok_or(WriteError::OffsetOverflow)?;
 
         let mut data_len = 0u64;
         for chunks in &prepared {
             for chunk in chunks {
                 data_len = data_len
                     .checked_add(chunk.bytes.len() as u64)
-                    .ok_or(Ba2WriteError::OffsetOverflow)?;
+                    .ok_or(WriteError::OffsetOverflow)?;
             }
         }
         let names_offset = if self.write_names && !self.entries.is_empty() {
             data_start
                 .checked_add(data_len)
-                .ok_or(Ba2WriteError::OffsetOverflow)?
+                .ok_or(WriteError::OffsetOverflow)?
         } else {
             0
         };
@@ -151,8 +149,8 @@ impl Dx10Writer {
 
         let mut data_off = data_start;
         for (entry, chunks) in self.entries.iter().zip(&prepared) {
-            let chunk_count = u8::try_from(chunks.len())
-                .map_err(|_| Ba2WriteError::TooManyFiles(chunks.len()))?;
+            let chunk_count =
+                u8::try_from(chunks.len()).map_err(|_| WriteError::TooManyFiles(chunks.len()))?;
             out.extend_from_slice(&entry.hash.file.to_le_bytes());
             out.extend_from_slice(&entry.hash.extension.to_le_bytes());
             out.extend_from_slice(&entry.hash.directory.to_le_bytes());
@@ -174,7 +172,7 @@ impl Dx10Writer {
                 out.extend_from_slice(&CHUNK_SENTINEL.to_le_bytes());
                 data_off = data_off
                     .checked_add(chunk.bytes.len() as u64)
-                    .ok_or(Ba2WriteError::OffsetOverflow)?;
+                    .ok_or(WriteError::OffsetOverflow)?;
             }
         }
 
@@ -195,40 +193,40 @@ impl Dx10Writer {
     }
 
     /// Serialize the archive and write it to `out`; an I/O error may leave a partial write
-    pub fn write<W: Write>(&self, out: &mut W) -> Result<(), Ba2WriteError> {
+    pub fn write<W: Write>(&self, out: &mut W) -> Result<(), WriteError> {
         let bytes = self.to_vec()?;
-        out.write_all(&bytes).map_err(Ba2WriteError::Io)
+        out.write_all(&bytes).map_err(WriteError::Io)
     }
 
     /// Parse, validate, split, and record one DDS texture
-    fn push(&mut self, path: &[u8], dds: Vec<u8>) -> Result<(), Ba2WriteError> {
+    fn push(&mut self, path: &[u8], dds: Vec<u8>) -> Result<(), WriteError> {
         let (name, hash) = hash_file(path);
         if name.is_empty() {
-            return Err(Ba2WriteError::InvalidPath {
+            return Err(WriteError::InvalidPath {
                 reason: "path is empty or only separators",
             });
         }
         if name.len() >= MAX_PATH_LEN {
-            return Err(Ba2WriteError::InvalidPath {
+            return Err(WriteError::InvalidPath {
                 reason: "path is 260 bytes or longer",
             });
         }
         if self.entries.len() >= u32::MAX as usize {
-            return Err(Ba2WriteError::TooManyFiles(self.entries.len() + 1));
+            return Err(WriteError::TooManyFiles(self.entries.len() + 1));
         }
         match self.seen.get(&hash) {
             Some(existing) if existing == &name => {
-                return Err(Ba2WriteError::DuplicatePath(lossy(&name)));
+                return Err(WriteError::DuplicatePath(lossy(&name)));
             }
             Some(existing) => {
-                return Err(Ba2WriteError::HashCollision {
+                return Err(WriteError::HashCollision {
                     first: lossy(existing),
                     second: lossy(&name),
                 });
             }
             None => {}
         }
-        let texture = dds::parse(&dds).map_err(|source| Ba2WriteError::Dds {
+        let texture = dds::parse(&dds).map_err(|source| WriteError::Dds {
             path: lossy(&name),
             source,
         })?;
@@ -438,7 +436,7 @@ mod tests {
         w.add_texture("Textures\\a.dds", dds.clone()).unwrap();
         assert!(matches!(
             w.add_texture("textures/A.DDS", dds),
-            Err(Ba2WriteError::DuplicatePath(_))
+            Err(WriteError::DuplicatePath(_))
         ));
     }
 
@@ -447,7 +445,7 @@ mod tests {
         let mut w = Dx10Writer::new();
         assert!(matches!(
             w.add_texture("a.dds", b"NOPE".to_vec()),
-            Err(Ba2WriteError::Dds { .. })
+            Err(WriteError::Dds { .. })
         ));
     }
 

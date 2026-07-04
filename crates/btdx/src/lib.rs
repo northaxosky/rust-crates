@@ -12,8 +12,8 @@ mod hashing;
 mod read;
 mod write;
 
-pub use error::{Ba2Error, Ba2WriteError, DdsError};
+pub use error::{DdsError, Error, WriteError};
 pub use read::{
-    Ba2Kind, Dx10Chunk, Dx10Entry, Entries, GnrlEntry, Header, extract, extract_texture, read,
+    ArchiveKind, Dx10Chunk, Dx10Entry, Entries, GnrlEntry, Header, extract, extract_texture, read,
 };
 pub use write::{Dx10Writer, GnrlWriter};

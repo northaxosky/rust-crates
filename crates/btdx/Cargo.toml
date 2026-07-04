@@ -1,5 +1,5 @@
 [package]
-name = "ba2r"
+name = "btdx"
 description = "Pure-Rust reader and writer for Fallout 4 Bethesda archives (BA2 / BTDX)"
 version = "0.1.0"
 edition.workspace = true

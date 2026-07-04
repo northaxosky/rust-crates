@@ -6,7 +6,7 @@
 //! never writes DX10/GNMF textures, LZ4 compression, or the v2/v3/v7/v8 header variants.
 
 use super::{CHUNK_SENTINEL, HEADER_SIZE, MAGIC, MAX_PATH_LEN, lossy, zlib_compress};
-use crate::error::Ba2WriteError;
+use crate::error::WriteError;
 use crate::hashing::{FileHash, hash_file};
 use std::collections::HashMap;
 use std::io::Write;
@@ -57,7 +57,7 @@ impl GnrlWriter {
         &mut self,
         path: impl AsRef<[u8]>,
         data: impl Into<Vec<u8>>,
-    ) -> Result<(), Ba2WriteError> {
+    ) -> Result<(), WriteError> {
         self.push(path.as_ref(), data.into(), true)
     }
 
@@ -66,30 +66,30 @@ impl GnrlWriter {
         &mut self,
         path: impl AsRef<[u8]>,
         data: impl Into<Vec<u8>>,
-    ) -> Result<(), Ba2WriteError> {
+    ) -> Result<(), WriteError> {
         self.push(path.as_ref(), data.into(), false)
     }
 
     /// Serialize the archive into a new byte buffer
-    pub fn to_vec(&self) -> Result<Vec<u8>, Ba2WriteError> {
+    pub fn to_vec(&self) -> Result<Vec<u8>, WriteError> {
         let file_count = u32::try_from(self.entries.len())
-            .map_err(|_| Ba2WriteError::TooManyFiles(self.entries.len()))?;
+            .map_err(|_| WriteError::TooManyFiles(self.entries.len()))?;
         let mut blocks: Vec<Block> = Vec::with_capacity(self.entries.len());
         for entry in &self.entries {
             let unpacked =
-                u32::try_from(entry.data.len()).map_err(|_| Ba2WriteError::FileTooLarge {
+                u32::try_from(entry.data.len()).map_err(|_| WriteError::FileTooLarge {
                     path: lossy(&entry.name),
                     size: entry.data.len(),
                 })?;
 
             let (packed, bytes) = if entry.compress {
                 let compressed =
-                    zlib_compress(&entry.data).map_err(|source| Ba2WriteError::ZlibCompress {
+                    zlib_compress(&entry.data).map_err(|source| WriteError::ZlibCompress {
                         path: lossy(&entry.name),
                         source,
                     })?;
                 let packed =
-                    u32::try_from(compressed.len()).map_err(|_| Ba2WriteError::FileTooLarge {
+                    u32::try_from(compressed.len()).map_err(|_| WriteError::FileTooLarge {
                         path: lossy(&entry.name),
                         size: compressed.len(),
                     })?;
@@ -106,22 +106,22 @@ impl GnrlWriter {
 
         let records = RECORD_SIZE
             .checked_mul(self.entries.len() as u64)
-            .ok_or(Ba2WriteError::OffsetOverflow)?;
+            .ok_or(WriteError::OffsetOverflow)?;
         let data_start = HEADER_SIZE
             .checked_add(records)
-            .ok_or(Ba2WriteError::OffsetOverflow)?;
+            .ok_or(WriteError::OffsetOverflow)?;
 
         let mut data_len = 0u64;
         for block in &blocks {
             data_len = data_len
                 .checked_add(block.bytes.len() as u64)
-                .ok_or(Ba2WriteError::OffsetOverflow)?;
+                .ok_or(WriteError::OffsetOverflow)?;
         }
 
         let names_offset = if self.write_names && !self.entries.is_empty() {
             data_start
                 .checked_add(data_len)
-                .ok_or(Ba2WriteError::OffsetOverflow)?
+                .ok_or(WriteError::OffsetOverflow)?
         } else {
             0
         };
@@ -147,7 +147,7 @@ impl GnrlWriter {
             out.extend_from_slice(&CHUNK_SENTINEL.to_le_bytes());
             data_off = data_off
                 .checked_add(block.bytes.len() as u64)
-                .ok_or(Ba2WriteError::OffsetOverflow)?;
+                .ok_or(WriteError::OffsetOverflow)?;
         }
 
         for block in &blocks {
@@ -164,39 +164,39 @@ impl GnrlWriter {
     }
 
     /// Serialize the archive and write it `out`: an I/O error may leave a partial write
-    pub fn write<W: Write>(&self, out: &mut W) -> Result<(), Ba2WriteError> {
+    pub fn write<W: Write>(&self, out: &mut W) -> Result<(), WriteError> {
         let bytes = self.to_vec()?;
-        out.write_all(&bytes).map_err(Ba2WriteError::Io)
+        out.write_all(&bytes).map_err(WriteError::Io)
     }
 
     /// Normalize, validate, and record one file
-    fn push(&mut self, path: &[u8], data: Vec<u8>, compress: bool) -> Result<(), Ba2WriteError> {
+    fn push(&mut self, path: &[u8], data: Vec<u8>, compress: bool) -> Result<(), WriteError> {
         let (name, hash) = hash_file(path);
         if name.is_empty() {
-            return Err(Ba2WriteError::InvalidPath {
+            return Err(WriteError::InvalidPath {
                 reason: "path is empty or only separator",
             });
         }
         if name.len() >= MAX_PATH_LEN {
-            return Err(Ba2WriteError::InvalidPath {
+            return Err(WriteError::InvalidPath {
                 reason: "path is 260 bytes or longer",
             });
         }
         if data.len() > u32::MAX as usize {
-            return Err(Ba2WriteError::FileTooLarge {
+            return Err(WriteError::FileTooLarge {
                 path: lossy(&name),
                 size: data.len(),
             });
         }
         if self.entries.len() >= u32::MAX as usize {
-            return Err(Ba2WriteError::TooManyFiles(self.entries.len() + 1));
+            return Err(WriteError::TooManyFiles(self.entries.len() + 1));
         }
         match self.seen.get(&hash) {
             Some(existing) if existing == &name => {
-                return Err(Ba2WriteError::DuplicatePath(lossy(&name)));
+                return Err(WriteError::DuplicatePath(lossy(&name)));
             }
             Some(existing) => {
-                return Err(Ba2WriteError::HashCollision {
+                return Err(WriteError::HashCollision {
                     first: lossy(existing),
                     second: lossy(&name),
                 });
@@ -341,7 +341,7 @@ mod tests {
         let err = w
             .add_file_stored("meshes/A.NIF", b"y".to_vec())
             .unwrap_err();
-        assert!(matches!(err, Ba2WriteError::DuplicatePath(_)));
+        assert!(matches!(err, WriteError::DuplicatePath(_)));
     }
 
     #[test]
@@ -351,7 +351,7 @@ mod tests {
         let err = w
             .add_file_stored("dir\\file.abcd2", b"y".to_vec())
             .unwrap_err();
-        assert!(matches!(err, Ba2WriteError::HashCollision { .. }));
+        assert!(matches!(err, WriteError::HashCollision { .. }));
     }
 
     #[test]
@@ -359,11 +359,11 @@ mod tests {
         let mut w = GnrlWriter::new();
         assert!(matches!(
             w.add_file_stored("", b"x".to_vec()),
-            Err(Ba2WriteError::InvalidPath { .. })
+            Err(WriteError::InvalidPath { .. })
         ));
         assert!(matches!(
             w.add_file_stored("\\\\", b"x".to_vec()),
-            Err(Ba2WriteError::InvalidPath { .. })
+            Err(WriteError::InvalidPath { .. })
         ));
     }
 

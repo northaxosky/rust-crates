@@ -3,13 +3,13 @@
 use std::io::Read;
 
 use crate::dds;
-use crate::error::Ba2Error;
+use crate::error::Error;
 
 const MAGIC: &[u8; 4] = b"BTDX";
 
 /// What a BA2 archive holds, from its 4-byte type tag
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Ba2Kind {
+pub enum ArchiveKind {
     /// `GNRL`: general files (meshes, scripts, sounds, ...)
     General,
     /// `DX10`: DirectX textures, stored as chunked mips
@@ -18,7 +18,7 @@ pub enum Ba2Kind {
     Other([u8; 4]),
 }
 
-impl Ba2Kind {
+impl ArchiveKind {
     fn from_tag(tag: [u8; 4]) -> Self {
         match &tag {
             b"GNRL" => Self::General,
@@ -34,7 +34,7 @@ pub struct Header {
     /// Format version: 1 = FO4 Old-Gen, 7/8 = FO4 Next-Gen
     pub version: u32,
     /// The archive's content kind
-    pub kind: Ba2Kind,
+    pub kind: ArchiveKind,
     /// Number of files the archive contains
     pub file_count: u32,
     /// Byte offset of the file-name table, or 0 when absent
@@ -111,16 +111,16 @@ fn u64le(b: &[u8], o: usize) -> u64 {
 
 impl Header {
     /// Parse the 24-byte header from the start of a BA2
-    pub fn parse(b: &[u8]) -> Result<Self, Ba2Error> {
+    pub fn parse(b: &[u8]) -> Result<Self, Error> {
         if b.len() < 24 {
-            return Err(Ba2Error::TooShort { what: "header" });
+            return Err(Error::TooShort { what: "header" });
         }
         if &b[0..4] != MAGIC {
-            return Err(Ba2Error::BadMagic);
+            return Err(Error::BadMagic);
         }
         Ok(Self {
             version: u32le(b, 4),
-            kind: Ba2Kind::from_tag(b[8..12].try_into().unwrap()),
+            kind: ArchiveKind::from_tag(b[8..12].try_into().unwrap()),
             file_count: u32le(b, 12),
             name_table_offset: u64le(b, 16),
         })
@@ -128,7 +128,7 @@ impl Header {
 }
 
 /// Read the header and every file record from a whole BA2 image held in memory
-pub fn read(bytes: &[u8]) -> Result<(Header, Entries), Ba2Error> {
+pub fn read(bytes: &[u8]) -> Result<(Header, Entries), Error> {
     let header = Header::parse(bytes)?;
     let names = read_names(
         bytes,
@@ -136,28 +136,28 @@ pub fn read(bytes: &[u8]) -> Result<(Header, Entries), Ba2Error> {
         header.file_count as usize,
     )?;
     let entries = match header.kind {
-        Ba2Kind::General => Entries::General(read_gnrl(bytes, &names)?),
-        Ba2Kind::Texture => Entries::Texture(read_dx10(bytes, &names)?),
-        Ba2Kind::Other(tag) => return Err(Ba2Error::UnsupportedType(tag)),
+        ArchiveKind::General => Entries::General(read_gnrl(bytes, &names)?),
+        ArchiveKind::Texture => Entries::Texture(read_dx10(bytes, &names)?),
+        ArchiveKind::Other(tag) => return Err(Error::UnsupportedType(tag)),
     };
     Ok((header, entries))
 }
 
 /// Decompress (or copy) one general-archive file's bytes out of the archive image
-pub fn extract(bytes: &[u8], entry: &GnrlEntry) -> Result<Vec<u8>, Ba2Error> {
+pub fn extract(bytes: &[u8], entry: &GnrlEntry) -> Result<Vec<u8>, Error> {
     read_chunk(bytes, entry.offset, entry.packed_size, entry.unpacked_size)
 }
 
 /// Rebuild a standalone DDS file for one DX10 texture record out of the archive image
-pub fn extract_texture(bytes: &[u8], entry: &Dx10Entry) -> Result<Vec<u8>, Ba2Error> {
+pub fn extract_texture(bytes: &[u8], entry: &Dx10Entry) -> Result<Vec<u8>, Error> {
     if entry.width == 0 || entry.height == 0 {
-        return Err(Ba2Error::Malformed("texture has zero dimensions"));
+        return Err(Error::Malformed("texture has zero dimensions"));
     }
     if entry.chunks.is_empty() {
-        return Err(Ba2Error::Malformed("texture has no chunks"));
+        return Err(Error::Malformed("texture has no chunks"));
     }
     if entry.tile_mode != 8 {
-        return Err(Ba2Error::Unsupported("non-linear DX10 texture tile mode"));
+        return Err(Error::Unsupported("non-linear DX10 texture tile mode"));
     }
     let cubemap = entry.flags & 1 != 0;
     let mut out = dds::header(
@@ -180,9 +180,8 @@ fn read_chunk(
     offset: u64,
     packed_size: u32,
     unpacked_size: u32,
-) -> Result<Vec<u8>, Ba2Error> {
-    let off =
-        usize::try_from(offset).map_err(|_| Ba2Error::Malformed("chunk offset out of range"))?;
+) -> Result<Vec<u8>, Error> {
+    let off = usize::try_from(offset).map_err(|_| Error::Malformed("chunk offset out of range"))?;
     let stored = if packed_size == 0 {
         unpacked_size
     } else {
@@ -190,10 +189,10 @@ fn read_chunk(
     } as usize;
     let end = off
         .checked_add(stored)
-        .ok_or(Ba2Error::Malformed("chunk data out of bounds"))?;
+        .ok_or(Error::Malformed("chunk data out of bounds"))?;
     let data = bytes
         .get(off..end)
-        .ok_or(Ba2Error::Malformed("chunk data out of bounds"))?;
+        .ok_or(Error::Malformed("chunk data out of bounds"))?;
     if packed_size == 0 {
         Ok(data.to_vec())
     } else {
@@ -202,19 +201,19 @@ fn read_chunk(
 }
 
 /// Inflate a zlib stream and require it to expand to exactly `unpacked_size` bytes
-fn inflate(comp: &[u8], unpacked_size: u32) -> Result<Vec<u8>, Ba2Error> {
+fn inflate(comp: &[u8], unpacked_size: u32) -> Result<Vec<u8>, Error> {
     let mut out = Vec::new();
     flate2::read::ZlibDecoder::new(comp)
         .take(u64::from(unpacked_size) + 1)
         .read_to_end(&mut out)
-        .map_err(Ba2Error::Zlib)?;
+        .map_err(Error::Zlib)?;
     if out.len() != unpacked_size as usize {
-        return Err(Ba2Error::Malformed("decompressed chunk size mismatch"));
+        return Err(Error::Malformed("decompressed chunk size mismatch"));
     }
     Ok(out)
 }
 
-fn read_names(b: &[u8], off: usize, count: usize) -> Result<Vec<Option<String>>, Ba2Error> {
+fn read_names(b: &[u8], off: usize, count: usize) -> Result<Vec<Option<String>>, Error> {
     if off == 0 {
         return Ok(vec![None; count]);
     }
@@ -222,13 +221,13 @@ fn read_names(b: &[u8], off: usize, count: usize) -> Result<Vec<Option<String>>,
     let mut p = off;
     for _ in 0..count {
         if p + 2 > b.len() {
-            return Err(Ba2Error::TooShort { what: "name table" });
+            return Err(Error::TooShort { what: "name table" });
         }
         let len = u16le(b, p) as usize;
         p += 2;
         let end = p + len;
         if end > b.len() {
-            return Err(Ba2Error::TooShort { what: "name entry" });
+            return Err(Error::TooShort { what: "name entry" });
         }
         names.push(Some(String::from_utf8_lossy(&b[p..end]).into_owned()));
         p = end;
@@ -236,12 +235,12 @@ fn read_names(b: &[u8], off: usize, count: usize) -> Result<Vec<Option<String>>,
     Ok(names)
 }
 
-fn read_gnrl(b: &[u8], names: &[Option<String>]) -> Result<Vec<GnrlEntry>, Ba2Error> {
+fn read_gnrl(b: &[u8], names: &[Option<String>]) -> Result<Vec<GnrlEntry>, Error> {
     let mut out = Vec::with_capacity(names.len());
     let mut p = 24;
     for name in names {
         if p + 36 > b.len() {
-            return Err(Ba2Error::TooShort {
+            return Err(Error::TooShort {
                 what: "GNRL record",
             });
         }
@@ -257,19 +256,19 @@ fn read_gnrl(b: &[u8], names: &[Option<String>]) -> Result<Vec<GnrlEntry>, Ba2Er
     Ok(out)
 }
 
-fn read_dx10(b: &[u8], names: &[Option<String>]) -> Result<Vec<Dx10Entry>, Ba2Error> {
+fn read_dx10(b: &[u8], names: &[Option<String>]) -> Result<Vec<Dx10Entry>, Error> {
     let mut out = Vec::with_capacity(names.len());
     let mut p = 24;
     for name in names {
         if p + 24 > b.len() {
-            return Err(Ba2Error::TooShort {
+            return Err(Error::TooShort {
                 what: "DX10 record",
             });
         }
         let rec = &b[p..p + 24];
         let num_chunks = rec[13] as usize;
         if u16le(rec, 14) != 24 {
-            return Err(Ba2Error::Malformed("unexpected DX10 chunk header size"));
+            return Err(Error::Malformed("unexpected DX10 chunk header size"));
         }
         let (height, width, num_mips, format, flags, tile_mode) = (
             u16le(rec, 16),
@@ -283,7 +282,7 @@ fn read_dx10(b: &[u8], names: &[Option<String>]) -> Result<Vec<Dx10Entry>, Ba2Er
         let mut chunks = Vec::with_capacity(num_chunks);
         for _ in 0..num_chunks {
             if p + 24 > b.len() {
-                return Err(Ba2Error::TooShort { what: "DX10 chunk" });
+                return Err(Error::TooShort { what: "DX10 chunk" });
             }
             let c = &b[p..p + 24];
             chunks.push(Dx10Chunk {
@@ -350,7 +349,7 @@ mod tests {
         let img = gnrl_archive("Meshes\\a.nif", b"data", 0, 4);
         let h = Header::parse(&img).unwrap();
         assert_eq!(h.version, 1);
-        assert_eq!(h.kind, Ba2Kind::General);
+        assert_eq!(h.kind, ArchiveKind::General);
         assert_eq!(h.file_count, 1);
     }
 
@@ -358,7 +357,7 @@ mod tests {
     fn rejects_a_bad_magic() {
         assert!(matches!(
             Header::parse(b"NOPE0000________________"),
-            Err(Ba2Error::BadMagic)
+            Err(Error::BadMagic)
         ));
     }
 
@@ -480,7 +479,7 @@ mod tests {
         };
         assert!(matches!(
             extract_texture(&img, &textures[0]),
-            Err(Ba2Error::Unsupported(_))
+            Err(Error::Unsupported(_))
         ));
     }
 
@@ -501,7 +500,7 @@ mod tests {
     fn rejects_a_short_header() {
         assert!(matches!(
             Header::parse(b"BTDX00"),
-            Err(Ba2Error::TooShort { .. })
+            Err(Error::TooShort { .. })
         ));
     }
 
@@ -513,7 +512,7 @@ mod tests {
         b.extend_from_slice(b"MEOW");
         b.extend_from_slice(&0u32.to_le_bytes());
         b.extend_from_slice(&0u64.to_le_bytes());
-        assert!(matches!(read(&b), Err(Ba2Error::UnsupportedType(t)) if &t == b"MEOW"));
+        assert!(matches!(read(&b), Err(Error::UnsupportedType(t)) if &t == b"MEOW"));
     }
 
     #[test]
@@ -526,7 +525,7 @@ mod tests {
         };
         assert!(matches!(
             extract(&[0u8; 64], &entry),
-            Err(Ba2Error::Malformed(_))
+            Err(Error::Malformed(_))
         ));
     }
 
@@ -538,10 +537,7 @@ mod tests {
         let Entries::General(files) = entries else {
             panic!("expected general");
         };
-        assert!(matches!(
-            extract(&img, &files[0]),
-            Err(Ba2Error::Malformed(_))
-        ));
+        assert!(matches!(extract(&img, &files[0]), Err(Error::Malformed(_))));
     }
 
     #[test]

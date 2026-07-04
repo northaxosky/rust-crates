@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// Why a BA2 could not be read
 #[derive(Debug, Error)]
-pub enum Ba2Error {
+pub enum Error {
     /// The buffer ended before a required structure could be read
     #[error("buffer is too short to hold a BA2 {what}")]
     TooShort { what: &'static str },
@@ -27,7 +27,7 @@ pub enum Ba2Error {
 
 /// Why a GNRL archive could not be written
 #[derive(Debug, Error)]
-pub enum Ba2WriteError {
+pub enum WriteError {
     /// A path was empty, only separators, or too long after normalization
     #[error("invalid archive path: {reason}")]
     InvalidPath { reason: &'static str },
