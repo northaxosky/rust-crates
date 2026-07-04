@@ -25,35 +25,58 @@ pub enum Ba2Error {
     Zlib(#[source] std::io::Error),
 }
 
-/// Why a GNRL archive could not be written.
+/// Why a GNRL archive could not be written
 #[derive(Debug, Error)]
 pub enum Ba2WriteError {
-    /// A path was empty, only separators, or too long after normalization.
+    /// A path was empty, only separators, or too long after normalization
     #[error("invalid archive path: {reason}")]
     InvalidPath { reason: &'static str },
-    /// Two files normalized to the same path.
+    /// Two files normalized to the same path
     #[error("duplicate file path: {0}")]
     DuplicatePath(String),
-    /// Two different paths produced the same BA2 key, so the game could not tell them apart.
+    /// Two different paths produced the same BA2 key, so the game could not tell them apart
     #[error("hash collision between {first} and {second}")]
     HashCollision { first: String, second: String },
-    /// A single file's stored or original length does not fit the 32-bit BA2 size field.
+    /// A single file's stored or original length does not fit the 32-bit BA2 size field
     #[error("file exceeds the BA2 32-bit size field (4 GiB per file): {path} ({size} bytes)")]
     FileTooLarge { path: String, size: usize },
-    /// The archive holds more files than the 32-bit count field allows.
+    /// The archive holds more files than the 32-bit count field allows
     #[error("too many files for a single BA2: {0}")]
     TooManyFiles(usize),
-    /// The archive's byte offsets overflowed a 64-bit integer.
+    /// The archive's byte offsets overflowed a 64-bit integer
     #[error("archive too large: byte offsets overflowed")]
     OffsetOverflow,
-    /// zlib compression of a file failed.
+    /// zlib compression of a file failed
     #[error("zlib compression failed for {path}")]
     ZlibCompress {
         path: String,
         #[source]
         source: std::io::Error,
     },
-    /// Writing the archive to the output sink failed.
+    /// An input DDS texture could not be parsed
+    #[error("invalid DDS for {path}: {source}")]
+    Dds { path: String, source: DdsError },
+    /// Writing the archive to the output sink failed
     #[error("failed to write archive")]
     Io(#[source] std::io::Error),
+}
+
+/// Why a DDS texture could not be parsed for packing into a DX10 archive
+#[derive(Debug, Error)]
+pub enum DdsError {
+    /// The data did not begin with the `DDS ` magic
+    #[error("not a DDS file")]
+    NotDds,
+    /// The header or pixel data was shorter than the format requires
+    #[error("DDS data is truncated")]
+    Truncated,
+    /// The DXGI format is not one this crate can size
+    #[error("unsupported DXGI format: {0}")]
+    UnsupportedFormat(u8),
+    /// The texture shape cannot be represented in a BA2 DX10 record
+    #[error("unsupported DDS shape: {0}")]
+    UnsupportedShape(&'static str),
+    /// The pixel data length did not match the format, dimensions, and mip count
+    #[error("DDS pixel data does not match its header")]
+    SizeMismatch,
 }
