@@ -1,12 +1,15 @@
 [package]
 name = "esl-writer"
-description = "Pure-Rust writer for minimal Bethesda light-master (ESL) carrier plugins"
 version = "0.1.0"
+description = "Pure-Rust writer for Bethesda light-master (ESL) plugins for Skyrim SE, Fallout 4, and Starfield"
+authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+readme = "README.md"
+keywords = ["esl", "esm", "bethesda", "plugin", "modding"]
+categories = ["game-development", "encoding"]
 
 [dependencies]
 thiserror.workspace = true
