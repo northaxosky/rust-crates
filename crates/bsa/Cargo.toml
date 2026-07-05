@@ -1,0 +1,12 @@
+[package]
+name = "bsa"
+description = "Pure-Rust reader and writer for Bethesda Softworks Archives (BSA)"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+thiserror.workspace = true
