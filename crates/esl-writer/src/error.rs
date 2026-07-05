@@ -34,4 +34,39 @@ pub enum WriteError {
         /// The record payload length that overflowed
         len: usize,
     },
+    /// A record's type signature did not match its group's label
+    #[error("record {record:?} does not match its group {group:?}")]
+    RecordTypeMismatch {
+        /// The group label
+        group: [u8; 4],
+        /// The mismatched record signature
+        record: [u8; 4],
+    },
+    /// A caller supplied a field using the reserved `XXXX` overflow signature
+    #[error("`XXXX` is a reserved field signature managed by the writer")]
+    ReservedFieldSignature,
+    /// A record set the compressed flag, which this crate cannot yet emit
+    #[error("compressed records are not supported: {record:?}")]
+    CompressedRecordUnsupported {
+        /// The record signature that requested compression
+        record: [u8; 4],
+    },
+    /// A record type requires nested groups this crate cannot yet write
+    #[error("record type {label:?} requires nested groups, which are not yet supported")]
+    NestedGroupRequired {
+        /// The group label that needs nesting
+        label: [u8; 4],
+    },
+    /// A group's serialized size exceeded the 32-bit group size field
+    #[error("group is too long: {len} bytes exceeds the 4 GiB group limit")]
+    GroupTooLong {
+        /// The group length that overflowed
+        len: usize,
+    },
+    /// The plugin holds more groups and records than the 32-bit HEDR count allows
+    #[error("too many records for a single plugin: {count}")]
+    TooManyRecords {
+        /// The group-plus-record count that overflowed
+        count: usize,
+    },
 }

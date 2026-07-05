@@ -27,10 +27,31 @@ The light-master flag bit differs by game (`0x200` for Skyrim SE / Fallout 4, `0
 so the target [`Game`] is required. Save Starfield carriers as `<base>.esm`, and Fallout 4 / Skyrim
 SE carriers as `<base>.esl`, where `<base>` matches the archive file-name stem.
 
+## Records and groups
+
+```rust
+use esl_writer::{Game, Group, Plugin, Record};
+
+let bytes = Plugin::new(Game::SkyrimSe)
+    .group(
+        Group::top(b"GLOB").record(
+            Record::new(b"GLOB", 0x0100_0801)
+                .field(b"EDID", b"MyGlobal\0")
+                .field(b"FLTV", 1.0f32.to_le_bytes()),
+        ),
+    )
+    .to_bytes()
+    .unwrap();
+```
+
+The writer computes record and group sizes, the header record count, and emits the `XXXX` overflow
+prefix for fields larger than 64 KB. FormIDs are caller-owned.
+
 ## Scope
 
-v0.1 writes the TES4 header record only: an empty light master with optional author, description, and
-masters. Content records and GRUP groups are not yet supported.
+Writes the TES4 header plus top-level groups of records. Nested groups (CELL/WRLD/DIAL), record
+compression, and reading are not yet supported; the crate writes syntactically valid containers, so
+which fields a record needs is the caller's responsibility.
 
 ## License
 

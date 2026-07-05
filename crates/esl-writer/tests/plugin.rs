@@ -1,6 +1,6 @@
 //! Integration tests for the public esl-writer API.
 
-use esl_writer::{Game, Plugin, carrier_plugin};
+use esl_writer::{Game, Group, Plugin, Record, carrier_plugin};
 
 /// Read a little-endian u16 at `off`
 fn u16le(b: &[u8], off: usize) -> u16 {
@@ -87,4 +87,32 @@ fn starfield_masters_have_no_data() {
         .unwrap();
     assert!(find_field(&bytes, b"MAST").is_some());
     assert!(find_field(&bytes, b"DATA").is_none());
+}
+
+#[test]
+fn plugin_with_a_group_round_trips() {
+    let bytes = Plugin::new(Game::SkyrimSe)
+        .group(
+            Group::top(b"GLOB").record(
+                Record::new(b"GLOB", 0x0100_0801)
+                    .field(b"EDID", b"MyGlobal\0")
+                    .field(b"FLTV", 1.0f32.to_le_bytes()),
+            ),
+        )
+        .to_bytes()
+        .unwrap();
+
+    let tes4_len = 24 + u32le(&bytes, 4) as usize;
+    assert_eq!(&bytes[tes4_len..tes4_len + 4], b"GRUP");
+    let group_size = u32le(&bytes, tes4_len + 4) as usize;
+    assert_eq!(&bytes[tes4_len + 8..tes4_len + 12], b"GLOB");
+    assert_eq!(bytes.len(), tes4_len + group_size);
+
+    let rec = tes4_len + 24;
+    assert_eq!(&bytes[rec..rec + 4], b"GLOB");
+    assert_eq!(u32le(&bytes, rec + 12), 0x0100_0801);
+    let rec_data = u32le(&bytes, rec + 4) as usize;
+    assert_eq!(group_size, 24 + 24 + rec_data);
+
+    assert_eq!(u32le(&bytes, 34), 2);
 }
