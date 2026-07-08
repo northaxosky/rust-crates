@@ -9,6 +9,18 @@
 //!
 //! Secondary compression (LZMA, djw, FGK) and custom code tables are rejected with a clear error;
 //! [`DecodeError`] is `#[non_exhaustive]` so that support can be added later without a breaking change.
+//!
+//! # Example
+//!
+//! ```
+//! // A minimal VCDIFF delta that appends the literal bytes "abc"
+//! let delta = [
+//!     0xD6, 0xC3, 0xC4, 0x00, 0x00, 0x00, 0x09, 0x03,
+//!     0x00, 0x03, 0x01, 0x00, 0x61, 0x62, 0x63, 0x04,
+//! ];
+//! let target = vcdiff_rs::decode(b"", &delta).unwrap();
+//! assert_eq!(target, b"abc");
+//! ```
 
 #![forbid(unsafe_code)]
 

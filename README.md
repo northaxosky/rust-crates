@@ -5,9 +5,10 @@ mod manager. No external tools, no C++ — cross-platform by default.
 
 | Crate | Role | Status |
 |---|---|---|
-| [`btdx`](crates/btdx) | Fallout 4 BA2 (`BTDX`) archive read/write | GNRL + DX10 read and write |
-| [`esl-writer`](crates/esl-writer) | minimal Bethesda light-master (ESL) plugin writer | stub |
-| [`vcdiff`](crates/vcdiff) | VCDIFF (RFC 3284) binary-delta decoder | stub |
+| [`btdx`](crates/btdx) | Fallout 4 & Starfield BA2 (`BTDX`) archive read/write | GNRL + DX10, read + write |
+| [`esl-writer`](crates/esl-writer) | Bethesda light-master (ESL) plugin writer | headers + records |
+| [`vcdiff-rs`](crates/vcdiff) | VCDIFF (RFC 3284) binary-delta decoder | decode |
+| [`bsa`](crates/bsa) | Bethesda Softworks Archive (BSA) read/write | stub |
 
 ## Build, test, lint
 

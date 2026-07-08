@@ -1,11 +1,15 @@
 [package]
 name = "vcdiff-rs"
-description = "Pure-Rust VCDIFF (RFC 3284) decoder for xdelta3-style binary deltas"
 version = "0.1.0"
+description = "Pure-Rust VCDIFF (RFC 3284) decoder for xdelta3-style binary deltas"
+authors.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
+keywords = ["vcdiff", "xdelta", "delta", "rfc3284", "diff"]
+categories = ["compression", "encoding"]
 publish = false
 
 [dependencies]
