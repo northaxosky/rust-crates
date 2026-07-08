@@ -1,5 +1,5 @@
 [package]
-name = "vcdiff"
+name = "vcdiff-rs"
 description = "Pure-Rust VCDIFF (RFC 3284) decoder for xdelta3-style binary deltas"
 version = "0.1.0"
 edition.workspace = true
@@ -10,3 +10,6 @@ publish = false
 
 [dependencies]
 thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
