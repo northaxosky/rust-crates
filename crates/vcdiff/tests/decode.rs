@@ -2,9 +2,15 @@
 
 mod common;
 
-use common::{Op, build, join_windows};
+use common::{Op, build, join_windows, varint};
 use proptest::prelude::*;
 use vcdiff_rs::{DecodeError, decode};
+
+const NEAR1_MODE: u8 = 3;
+const NEAR2_MODE: u8 = 4;
+const NEAR3_MODE: u8 = 5;
+const SAME1_MODE: u8 = 7;
+const SAME2_MODE: u8 = 8;
 
 // Golden vectors are hand-encoded from RFC grammar rather than the test encoder
 
@@ -108,6 +114,59 @@ fn builder_multi_window() {
 }
 
 #[test]
+fn decoder_executes_near1_near2_and_near3_copy_modes() {
+    let ops = vec![
+        Op::Copy(0, 1),
+        Op::Copy(2, 1),
+        Op::CopyMode {
+            mode: NEAR1_MODE,
+            encoded_address: varint(1),
+            len: 1,
+        },
+        Op::CopyMode {
+            mode: NEAR2_MODE,
+            encoded_address: varint(1),
+            len: 1,
+        },
+        Op::CopyMode {
+            mode: NEAR3_MODE,
+            encoded_address: varint(1),
+            len: 1,
+        },
+    ];
+
+    assert_eq!(decode(b"abcdef", &build(6, &ops)).unwrap(), b"acdef");
+}
+
+#[test]
+fn decoder_executes_same1_and_same2_copy_modes() {
+    let same1_address = 257_usize;
+    let same2_address = 514_usize;
+    let mut source = vec![b'.'; same2_address + 1];
+    source[same1_address] = b'x';
+    source[same2_address] = b'y';
+    let ops = vec![
+        Op::Copy(same1_address as u64, 1),
+        Op::CopyMode {
+            mode: SAME1_MODE,
+            encoded_address: vec![(same1_address % 256) as u8],
+            len: 1,
+        },
+        Op::Copy(same2_address as u64, 1),
+        Op::CopyMode {
+            mode: SAME2_MODE,
+            encoded_address: vec![(same2_address % 256) as u8],
+            len: 1,
+        },
+    ];
+
+    assert_eq!(
+        decode(&source, &build(source.len(), &ops)).unwrap(),
+        b"xxyy"
+    );
+}
+
+#[test]
 fn empty_target_is_valid() {
     let delta = build(0, &[]);
     assert_eq!(decode(b"", &delta).unwrap(), b"");
@@ -126,6 +185,37 @@ fn truncated_header_is_rejected() {
     assert!(matches!(
         decode(b"", &[0xD6, 0xC3]),
         Err(DecodeError::TruncatedDelta { .. })
+    ));
+}
+
+#[test]
+fn unterminated_window_varint_returns_truncated_delta() {
+    let delta = [0xD6, 0xC3, 0xC4, 0x00, 0x00, 0x00, 0x80];
+    let error = decode(b"", &delta).unwrap_err();
+
+    assert!(matches!(
+        error,
+        DecodeError::TruncatedDelta { context }
+            if context.delta_offset == 7
+                && context.window == Some(0)
+                && context.section.is_none()
+    ));
+}
+
+#[test]
+fn overflowing_window_varint_returns_varint_overflow() {
+    let delta = [
+        0xD6, 0xC3, 0xC4, 0x00, 0x00, 0x00, 0x82, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
+        0x00,
+    ];
+    let error = decode(b"", &delta).unwrap_err();
+
+    assert!(matches!(
+        error,
+        DecodeError::VarintOverflow { context }
+            if context.delta_offset == 6
+                && context.window == Some(0)
+                && context.section.is_none()
     ));
 }
 

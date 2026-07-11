@@ -1,8 +1,7 @@
 //! A minimal VCDIFF encoder used to build deltas for decode tests.
 //!
-//! It emits a single window using only the size-from-stream opcodes (RUN=0, ADD=1, COPY mode 0 = 19),
-//! so tests can construct arbitrary valid deltas without reproducing the merged code table. COPY
-//! addresses are absolute indices into the combined window `U = source || target`.
+//! It emits a single window using size-from-stream opcodes so tests can construct arbitrary valid deltas.
+//! COPY addresses are absolute by default, or may supply encoded bytes for a specific address mode.
 
 #![allow(dead_code)]
 
@@ -14,6 +13,12 @@ pub enum Op {
     Run(u8, u64),
     /// Copy `len` bytes from absolute address `addr` in `U = source || target`
     Copy(u64, u64),
+    /// Copy using a default-table address mode and its encoded address bytes
+    CopyMode {
+        mode: u8,
+        encoded_address: Vec<u8>,
+        len: u64,
+    },
 }
 
 /// Encode `value` as an RFC 3284 base-128 big-endian varint
@@ -53,6 +58,17 @@ pub fn build(source_len: usize, ops: &[Op]) -> Vec<u8> {
                 inst.push(19);
                 inst.extend(varint(*len));
                 addr.extend(varint(*address));
+                target_size += *len;
+            }
+            Op::CopyMode {
+                mode,
+                encoded_address,
+                len,
+            } => {
+                assert!(*mode <= 8);
+                inst.push(19 + 16 * mode);
+                inst.extend(varint(*len));
+                addr.extend_from_slice(encoded_address);
                 target_size += *len;
             }
         }
