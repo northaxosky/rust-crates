@@ -34,6 +34,8 @@
 mod cache;
 mod code_table;
 mod decoder;
+#[allow(dead_code)]
+mod djw;
 mod error;
 mod input;
 mod options;

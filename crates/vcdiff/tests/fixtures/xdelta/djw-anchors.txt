@@ -1,0 +1,48 @@
+External DJW section anchors
+
+Generated: 2026-07-11
+Producer: xdelta3 3.2.0
+Release commit: ff322e592383227b0d65ddfde7e0e5bbc504dc15
+Executable SHA-256: 53d90226615f217d3380c39892833311b4e24acd863e1ca01f14b5e772e2e6d0
+Build configuration: producers/xdelta-3.2.0-config.txt, including SECONDARY_DJW=1
+Environment: XDELTA unset
+
+Target generation:
+
+one = bytes(65 + ((i * 17 + i // 7) % 12) for i in range(512))
+
+multi = bytearray()
+for sector in range(200):
+    family = sector % 4
+    base = family * 48
+    for i in range(10):
+        multi.append((base + ((i * 7 + sector // 4) % 24)) & 0xff)
+
+Commands:
+
+xdelta3.exe -f -e -A -N -n -S djw1 one.raw one.vcdiff
+xdelta3.exe -f -e -A -N -n -S none one.raw one-none.vcdiff
+xdelta3.exe -f -e -A -N -n -S djw9 multi.raw multi.vcdiff
+xdelta3.exe -f -e -A -N -n -S none multi.raw multi-none.vcdiff
+xdelta3.exe -f -d one.vcdiff one.decoded
+xdelta3.exe -f -d multi.vcdiff multi.decoded
+
+The DATA section was parsed from each VCDIFF file. The decoded-size varint was removed from the
+DJW form to produce the payload anchor. The matching DATA bytes from the -S none form produced the
+raw anchor. Both complete DJW deltas were decoded by the producer and matched their generated target.
+
+one.vcdiff: 218 bytes, SHA-256 3d3c6bdfb0117b2de7a4b35ce8882dd4539bedfed3ffb083375d000b3243f607, CRC32 02a62548
+one-none.vcdiff: 530 bytes, SHA-256 75916c81352ce3606282bb2393056279fc54c57fa4d587194fc2a8307b4d5f2e, CRC32 029e881f
+djw-one-xdelta-3.2.0.payload.bin: 197 bytes, SHA-256 a22ce0c94a213f864725d794ccf065d7c0c960ec46fdb57ab9ae407fa6b1a539, CRC32 8db8ec3d
+djw-one-xdelta-3.2.0.raw.bin: 512 bytes, SHA-256 5367055fb2ff891de9954be88ca51593bdeeac3aa59e8cc039b9f5ae424e29e6, CRC32 0bc5bcde
+
+multi.vcdiff: 1522 bytes, SHA-256 68d3c740d5ade4ce2284d9f498433e9f118bcd41341571807b59b5cd36da0231, CRC32 b088471c
+multi-none.vcdiff: 2018 bytes, SHA-256 6073c9850b023f02696164d56bee8d12065832eb8ae2203e0983b540cf94806e, CRC32 dd278624
+djw-multi-xdelta-3.2.0.payload.bin: 1501 bytes, SHA-256 cc6864a7e2ed524eede5cf4447a50cfa61479f6212b52f3e1abe1625f70a9a13, CRC32 bda477ee
+djw-multi-xdelta-3.2.0.raw.bin: 2000 bytes, SHA-256 582bc1784fbaa5ac2752b8fb90116e46e0d8a70c5c8258186634e2a4ceb6bbed, CRC32 1e089fc4
+
+Wire checks:
+
+The one-table payload declares one group.
+The multi-table payload declares two groups.
+The multi-table cfg(test) trace records 48 implicit-zero code-length positions while a run is pending.
