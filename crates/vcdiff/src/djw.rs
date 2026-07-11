@@ -1,8 +1,9 @@
 //! Stateless xdelta DJW section decoding
 
+use std::fmt;
 use std::io::{Read, Seek};
 
-use crate::error::{DecodeContext, DecodeError};
+use crate::error::{DecodeContext, DecodeError, SecondaryError};
 use crate::input::DeltaInput;
 
 pub(crate) const XDELTA_DJW_ID: u8 = 1;
@@ -19,7 +20,7 @@ const INITIAL_LENGTH_ORDER: [u8; 21] = [
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DjwFault {
+pub(crate) enum DjwFault {
     Truncated,
     InvalidField,
     InvalidTable,
@@ -29,6 +30,23 @@ enum DjwFault {
     RunOverflow,
     RunPastEnd,
     InvalidSelector,
+}
+
+impl fmt::Display for DjwFault {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
+            Self::Truncated => "truncated DJW payload",
+            Self::InvalidField => "invalid DJW field",
+            Self::InvalidTable => "invalid DJW Huffman table",
+            Self::EmptyTable => "empty DJW Huffman table",
+            Self::InvalidCode => "invalid DJW Huffman code",
+            Self::InvalidMtf => "invalid DJW move-to-front position",
+            Self::RunOverflow => "DJW run overflow",
+            Self::RunPastEnd => "DJW run exceeds output",
+            Self::InvalidSelector => "invalid DJW selector",
+        };
+        formatter.write_str(message)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -550,10 +568,11 @@ pub(crate) fn decode_section<D: Read + Seek>(
     )
 }
 
-fn format_error(context: DecodeContext, _fault: DjwFault) -> DecodeError {
-    DecodeError::MalformedSecondarySection {
+fn format_error(context: DecodeContext, fault: DjwFault) -> DecodeError {
+    DecodeError::SecondaryDecompression {
         compressor_id: XDELTA_DJW_ID,
         context,
+        source: SecondaryError::djw(fault),
     }
 }
 

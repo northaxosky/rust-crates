@@ -8,7 +8,7 @@ pub struct DecodeOptions {
     pub max_target_size: u64,
     /// Maximum decoded section bytes retained for one window
     pub max_window_memory: u64,
-    /// Maximum LZMA2 dictionary size for each secondary stream
+    /// Maximum ID-2 LZMA2 dictionary size for each secondary stream
     pub max_secondary_dictionary_size: u64,
 }
 

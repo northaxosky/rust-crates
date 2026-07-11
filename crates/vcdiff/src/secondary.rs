@@ -1,9 +1,10 @@
-//! Persistent xdelta ID-2 section decoding
+//! Xdelta secondary section decoding
 
 use std::io::{Read, Seek};
 
 use xz4rust::{DICT_SIZE_MAX, DICT_SIZE_MIN, XzDecoder, XzError};
 
+use crate::djw::{self, XDELTA_DJW_ID};
 use crate::error::{DecodeContext, DecodeError, SecondaryError, SectionKind};
 use crate::input::DeltaInput;
 
@@ -16,24 +17,36 @@ pub(crate) struct PreparedSection {
     pub(crate) delta_offset: u64,
 }
 
-/// Three lazy persistent secondary streams and one fixed staging buffer
-pub(crate) struct SecondaryStates {
+/// File-global secondary codec state
+pub(crate) struct SecondaryDecoder {
+    codec: Option<SecondaryCodec>,
+}
+
+enum SecondaryCodec {
+    Djw,
+    Lzma(LzmaStates),
+}
+
+struct LzmaStates {
     decoders: [Option<Box<XzDecoder<'static>>>; 3],
     staging: Vec<u8>,
     max_dictionary_size: u64,
 }
 
-impl SecondaryStates {
-    /// Create empty persistent state with a caller-controlled dictionary cap
-    pub(crate) fn new(max_dictionary_size: u64) -> Self {
-        Self {
-            decoders: [None, None, None],
-            staging: Vec::new(),
-            max_dictionary_size,
-        }
+impl SecondaryDecoder {
+    /// Create state for the validated file-global codec
+    pub(crate) fn new(compressor_id: Option<u8>, max_dictionary_size: u64) -> Self {
+        let codec = match compressor_id {
+            Some(XDELTA_DJW_ID) => Some(SecondaryCodec::Djw),
+            Some(XDELTA_LZMA_ID) => {
+                Some(SecondaryCodec::Lzma(LzmaStates::new(max_dictionary_size)))
+            }
+            _ => None,
+        };
+        Self { codec }
     }
 
-    /// Prepare one raw or ID-2-compressed section
+    /// Prepare one raw or compressed section
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn prepare<D: Read + Seek>(
         &mut self,
@@ -58,13 +71,19 @@ impl SecondaryStates {
             });
         }
 
+        let compressor_id =
+            self.compressor_id()
+                .ok_or(DecodeError::CompressedSectionWithoutCompressor {
+                    section: kind,
+                    context,
+                })?;
         let section_end = section_start
             .checked_add(encoded_len)
             .ok_or(DecodeError::ArithmeticOverflow { context })?;
         if section_end > input.len() {
             return Err(DecodeError::TruncatedDelta { context });
         }
-        let decoded_size = read_bounded_varint(input, section_end, context)?;
+        let decoded_size = read_bounded_varint(input, section_end, compressor_id, context)?;
         if decoded_size == 0 {
             return Err(DecodeError::InvalidSecondarySize {
                 value: decoded_size,
@@ -77,6 +96,88 @@ impl SecondaryStates {
             .ok_or(DecodeError::ArithmeticOverflow { context })?;
         let mut output = allocate_section(decoded_size, context, active_memory, max_window_memory)?;
 
+        match self.codec.as_mut() {
+            Some(SecondaryCodec::Djw) => {
+                djw::decode_section(
+                    input,
+                    section_end,
+                    &mut output,
+                    *active_memory,
+                    max_window_memory,
+                )?;
+                let actual = input.position().checked_sub(fragment_start).ok_or(
+                    DecodeError::ArithmeticOverflow {
+                        context: input.context(),
+                    },
+                )?;
+                if actual != fragment_len {
+                    return Err(DecodeError::SecondaryInputMismatch {
+                        expected: fragment_len,
+                        actual,
+                        context,
+                    });
+                }
+            }
+            Some(SecondaryCodec::Lzma(states)) => states.decode(
+                input,
+                section_end,
+                fragment_len,
+                decoded_size,
+                &mut output,
+                kind,
+                context,
+            )?,
+            None => {
+                return Err(DecodeError::CompressedSectionWithoutCompressor {
+                    section: kind,
+                    context,
+                });
+            }
+        }
+
+        Ok(PreparedSection {
+            bytes: output,
+            delta_offset: section_start,
+        })
+    }
+
+    #[cfg(test)]
+    fn is_initialized(&self, kind: SectionKind) -> bool {
+        match &self.codec {
+            Some(SecondaryCodec::Lzma(states)) => states.decoders[kind.index()].is_some(),
+            _ => false,
+        }
+    }
+
+    fn compressor_id(&self) -> Option<u8> {
+        match &self.codec {
+            Some(SecondaryCodec::Djw) => Some(XDELTA_DJW_ID),
+            Some(SecondaryCodec::Lzma(_)) => Some(XDELTA_LZMA_ID),
+            None => None,
+        }
+    }
+}
+
+impl LzmaStates {
+    fn new(max_dictionary_size: u64) -> Self {
+        Self {
+            decoders: [None, None, None],
+            staging: Vec::new(),
+            max_dictionary_size,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn decode<D: Read + Seek>(
+        &mut self,
+        input: &mut DeltaInput<'_, D>,
+        section_end: u64,
+        fragment_len: u64,
+        decoded_size: u64,
+        output: &mut [u8],
+        kind: SectionKind,
+        context: DecodeContext,
+    ) -> Result<(), DecodeError> {
         self.ensure_staging(context)?;
         let first_fragment = self.decoders[kind.index()].is_none();
         self.ensure_decoder(kind, context)?;
@@ -90,15 +191,12 @@ impl SecondaryStates {
             section_end,
             fragment_len,
             decoded_size,
-            &mut output,
+            output,
             self.max_dictionary_size,
             first_fragment,
             context,
         )?;
-        Ok(PreparedSection {
-            bytes: output,
-            delta_offset: section_start,
-        })
+        Ok(())
     }
 
     fn ensure_staging(&mut self, context: DecodeContext) -> Result<(), DecodeError> {
@@ -142,11 +240,6 @@ impl SecondaryStates {
         ));
         Ok(())
     }
-
-    #[cfg(test)]
-    fn is_initialized(&self, kind: SectionKind) -> bool {
-        self.decoders[kind.index()].is_some()
-    }
 }
 
 fn allocate_section(
@@ -184,12 +277,13 @@ fn allocate_section(
 fn read_bounded_varint<D: Read + Seek>(
     input: &mut DeltaInput<'_, D>,
     section_end: u64,
+    compressor_id: u8,
     context: DecodeContext,
 ) -> Result<u64, DecodeError> {
     let mut value = 0_u64;
     for _ in 0..10 {
         if input.position() >= section_end {
-            return Err(malformed(context));
+            return Err(malformed_for(compressor_id, context));
         }
         let byte = input.read_u8()?;
         value = value
@@ -270,7 +364,7 @@ fn decode_fragment<D: Read + Seek>(
                 return Err(DecodeError::SecondaryDecompression {
                     compressor_id: XDELTA_LZMA_ID,
                     context,
-                    source: SecondaryError::new(source),
+                    source: SecondaryError::lzma(source),
                 });
             }
         };
@@ -355,7 +449,7 @@ fn dictionary_limit_error(
     DecodeError::SecondaryDecompression {
         compressor_id: XDELTA_LZMA_ID,
         context,
-        source: SecondaryError::new(XzError::DictionaryTooLarge(required)),
+        source: SecondaryError::lzma(XzError::DictionaryTooLarge(required)),
     }
 }
 
@@ -391,8 +485,12 @@ fn refill_staging<D: Read + Seek>(
 }
 
 fn malformed(context: DecodeContext) -> DecodeError {
+    malformed_for(XDELTA_LZMA_ID, context)
+}
+
+fn malformed_for(compressor_id: u8, context: DecodeContext) -> DecodeError {
     DecodeError::MalformedSecondarySection {
-        compressor_id: XDELTA_LZMA_ID,
+        compressor_id,
         context,
     }
 }
@@ -494,7 +592,7 @@ mod tests {
     }
 
     fn prepare_payload(
-        states: &mut SecondaryStates,
+        states: &mut SecondaryDecoder,
         kind: SectionKind,
         payload: &[u8],
         compressed: bool,
@@ -517,9 +615,9 @@ mod tests {
             .map(|section| section.bytes)
     }
 
-    fn seeded_states(kind: SectionKind, count: usize) -> SecondaryStates {
+    fn seeded_states(kind: SectionKind, count: usize) -> SecondaryDecoder {
         let windows = fixture_windows();
-        let mut states = SecondaryStates::new(MAX_DICTIONARY);
+        let mut states = SecondaryDecoder::new(Some(XDELTA_LZMA_ID), MAX_DICTIONARY);
         for (index, window) in windows.iter().take(count).enumerate() {
             let decoded =
                 prepare_payload(&mut states, kind, window.payload, true, index as u64).unwrap();
@@ -575,7 +673,7 @@ mod tests {
         .unwrap();
         assert_eq!(decoded, windows[2].expected);
 
-        let mut fresh = SecondaryStates::new(MAX_DICTIONARY);
+        let mut fresh = SecondaryDecoder::new(Some(XDELTA_LZMA_ID), MAX_DICTIONARY);
         assert!(
             prepare_payload(&mut fresh, SectionKind::Data, windows[2].payload, true, 2).is_err()
         );
@@ -584,7 +682,7 @@ mod tests {
     #[test]
     fn each_section_kind_has_an_independent_persistent_stream() {
         let windows = fixture_windows();
-        let mut states = SecondaryStates::new(MAX_DICTIONARY);
+        let mut states = SecondaryDecoder::new(Some(XDELTA_LZMA_ID), MAX_DICTIONARY);
         for (window_index, window) in windows.iter().enumerate() {
             for kind in [
                 SectionKind::Data,
@@ -605,7 +703,7 @@ mod tests {
     #[test]
     fn raw_sections_do_not_initialize_or_advance_secondary_state() {
         let windows = fixture_windows();
-        let mut states = SecondaryStates::new(MAX_DICTIONARY);
+        let mut states = SecondaryDecoder::new(Some(XDELTA_LZMA_ID), MAX_DICTIONARY);
         assert_eq!(
             prepare_payload(&mut states, SectionKind::Data, b"raw", false, 0).unwrap(),
             b"raw"
@@ -735,7 +833,7 @@ mod tests {
 
     #[test]
     fn zero_decoded_size_is_rejected_before_state_initialization() {
-        let mut states = SecondaryStates::new(MAX_DICTIONARY);
+        let mut states = SecondaryDecoder::new(Some(XDELTA_LZMA_ID), MAX_DICTIONARY);
         assert!(matches!(
             prepare_payload(&mut states, SectionKind::Data, &[0], true, 0),
             Err(DecodeError::InvalidSecondarySize { value: 0, .. })
@@ -768,7 +866,7 @@ mod tests {
     fn dictionary_policy_below_codec_minimum_is_rejected() {
         let windows = fixture_windows();
         let configured_limit = DICT_SIZE_MIN as u64 - 1;
-        let mut states = SecondaryStates::new(configured_limit);
+        let mut states = SecondaryDecoder::new(Some(XDELTA_LZMA_ID), configured_limit);
         assert!(matches!(
             prepare_payload(
                 &mut states,
@@ -793,7 +891,7 @@ mod tests {
         let mut payload = window.payload.to_vec();
         let fragment_start = payload.len() - window.fragment.len();
         payload[fragment_start + 7] = 1;
-        let mut states = SecondaryStates::new(MAX_DICTIONARY);
+        let mut states = SecondaryDecoder::new(Some(XDELTA_LZMA_ID), MAX_DICTIONARY);
         assert!(matches!(
             prepare_payload(&mut states, SectionKind::Data, &payload, true, 0),
             Err(DecodeError::MalformedSecondarySection { .. })

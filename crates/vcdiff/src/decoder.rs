@@ -4,10 +4,11 @@ use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
 
 use crate::cache::AddressCache;
 use crate::code_table::{Entry, InstKind, Instruction, default_table};
+use crate::djw::XDELTA_DJW_ID;
 use crate::error::{ByteRange, DecodeContext, DecodeError, IoOperation, SectionKind};
 use crate::input::{DeltaInput, SliceCursor};
 use crate::options::DecodeOptions;
-use crate::secondary::{PreparedSection, SecondaryStates, XDELTA_LZMA_ID};
+use crate::secondary::{PreparedSection, SecondaryDecoder, XDELTA_LZMA_ID};
 use crate::target::{FallibleMemoryTarget, TargetWriter};
 
 const MAGIC: [u8; 3] = [0xD6, 0xC3, 0xC4];
@@ -60,7 +61,8 @@ where
     let header = parse_header(&mut input)?;
     let table = default_table();
     let mut output = TargetWriter::new(target)?;
-    let mut secondary = SecondaryStates::new(options.max_secondary_dictionary_size);
+    let mut secondary =
+        SecondaryDecoder::new(header.compressor_id, options.max_secondary_dictionary_size);
     let mut window = 0_u64;
 
     while !input.is_empty() {
@@ -214,7 +216,7 @@ fn parse_header<D: Read + Seek>(input: &mut DeltaInput<'_, D>) -> Result<Header,
     let compressor_id = if indicator & VCD_DECOMPRESS != 0 {
         let context = input.context();
         let id = input.read_u8()?;
-        if id != XDELTA_LZMA_ID {
+        if id != XDELTA_DJW_ID && id != XDELTA_LZMA_ID {
             return Err(DecodeError::UnsupportedSecondaryCompressor { id, context });
         }
         Some(id)
@@ -267,7 +269,7 @@ fn decode_window<S, D, T>(
     source: &mut S,
     source_len: u64,
     output: &mut TargetWriter<'_, T>,
-    secondary: &mut SecondaryStates,
+    secondary: &mut SecondaryDecoder,
     table: &[Entry; 256],
     header: Header,
     options: &DecodeOptions,
@@ -492,7 +494,7 @@ fn read_sections<D: Read + Seek>(
     encoded_lengths: [u64; 3],
     indicator: u8,
     window: u64,
-    secondary: &mut SecondaryStates,
+    secondary: &mut SecondaryDecoder,
     max_window_memory: u64,
 ) -> Result<WindowSections, DecodeError> {
     let mut active_memory = 0_u64;

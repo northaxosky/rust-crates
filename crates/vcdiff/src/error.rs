@@ -6,6 +6,8 @@ use std::io;
 use thiserror::Error;
 use xz4rust::XzError;
 
+use crate::djw::DjwFault;
+
 /// A VCDIFF section carried by a target window
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -128,18 +130,35 @@ impl fmt::Display for DecodeContext {
 /// Opaque secondary-codec failure preserved in the standard error chain
 #[derive(Debug)]
 pub struct SecondaryError {
-    inner: XzError,
+    inner: SecondaryErrorKind,
+}
+
+#[derive(Debug)]
+enum SecondaryErrorKind {
+    Djw(DjwFault),
+    Lzma(XzError),
 }
 
 impl SecondaryError {
-    pub(crate) const fn new(inner: XzError) -> Self {
-        Self { inner }
+    pub(crate) const fn djw(error: DjwFault) -> Self {
+        Self {
+            inner: SecondaryErrorKind::Djw(error),
+        }
+    }
+
+    pub(crate) const fn lzma(error: XzError) -> Self {
+        Self {
+            inner: SecondaryErrorKind::Lzma(error),
+        }
     }
 }
 
 impl fmt::Display for SecondaryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.inner, formatter)
+        match &self.inner {
+            SecondaryErrorKind::Djw(error) => fmt::Display::fmt(error, formatter),
+            SecondaryErrorKind::Lzma(error) => fmt::Display::fmt(error, formatter),
+        }
     }
 }
 
