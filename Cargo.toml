@@ -17,6 +17,7 @@ sha2 = "0.10"
 blake3 = "1"
 crc32fast = "1"
 serde = { version = "1", features = ["derive"] }
+sha1 = "0.10"
 tempfile = "3"
 toml = "0.8"
 lz4_flex = { version = "0.11", default-features = false, features = [

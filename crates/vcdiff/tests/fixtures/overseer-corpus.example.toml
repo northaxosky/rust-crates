@@ -1,6 +1,7 @@
 [[case]]
 name = "synthetic-xdelta-default"
 source = "xdelta/source.bin"
+expected_source_sha1 = "0000000000000000000000000000000000000000"
 delta = "xdelta/xdelta-3.2.0-default.vcdiff"
 expected_target = "xdelta/target.bin"
 expected_size = 98304

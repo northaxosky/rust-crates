@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 
 use crc32fast::Hasher as Crc32;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
+use sha1::{Digest, Sha1};
+use sha2::Sha256;
 use tempfile::{Builder, NamedTempFile};
 use vcdiff_rs::{DecodeOptions, decode_to};
 
@@ -25,6 +26,7 @@ struct Manifest {
 struct Case {
     name: String,
     source: PathBuf,
+    expected_source_sha1: String,
     delta: PathBuf,
     expected_target: PathBuf,
     expected_size: u64,
@@ -74,6 +76,31 @@ fn parse_sha256(value: &str) -> io::Result<String> {
         ));
     }
     Ok(value.to_ascii_lowercase())
+}
+
+fn parse_sha1(value: &str) -> io::Result<String> {
+    let value = value.trim();
+    if value.len() != 40 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(invalid_data(
+            "expected_source_sha1 must contain 40 hexadecimal digits",
+        ));
+    }
+    Ok(value.to_ascii_lowercase())
+}
+
+fn source_sha1(file: &mut File) -> io::Result<String> {
+    file.seek(SeekFrom::Start(0))?;
+    let mut buffer = [0_u8; BUFFER_SIZE];
+    let mut sha1 = Sha1::new();
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        sha1.update(&buffer[..count]);
+    }
+    file.seek(SeekFrom::Start(0))?;
+    Ok(format!("{:x}", sha1.finalize()))
 }
 
 fn fingerprint(file: &mut File) -> io::Result<Fingerprint> {
@@ -163,6 +190,54 @@ fn verify_fingerprint(
     Ok(())
 }
 
+fn verify_case(case: &Case, manifest_root: &Path) -> Result<(), Box<dyn Error>> {
+    let expected_source_sha1 = parse_sha1(&case.expected_source_sha1)?;
+    let expected_crc32 = parse_crc32(&case.expected_crc32)?;
+    let expected_sha256 = parse_sha256(&case.expected_sha256)?;
+    let source_path = resolve(manifest_root, &case.source);
+    let delta_path = resolve(manifest_root, &case.delta);
+    let expected_path = resolve(manifest_root, &case.expected_target);
+
+    println!("verifying corpus case {}", case.name);
+    let mut source = File::open(source_path)?;
+    let actual_source_sha1 = source_sha1(&mut source)?;
+    if actual_source_sha1 != expected_source_sha1 {
+        return Err(invalid_data(format!(
+            "source SHA-1 mismatch: expected {expected_source_sha1}, got {actual_source_sha1}"
+        ))
+        .into());
+    }
+
+    let mut expected = File::open(&expected_path)?;
+    let expected_fingerprint = fingerprint(&mut expected)?;
+    verify_fingerprint(
+        &expected_fingerprint,
+        case.expected_size,
+        expected_crc32,
+        &expected_sha256,
+    )?;
+
+    let mut delta = File::open(delta_path)?;
+    let mut output = create_output(&expected_path, manifest_root)?;
+    let mut options = DecodeOptions::default();
+    options.max_target_size = case.expected_size;
+    decode_to(&mut source, &mut delta, output.as_file_mut(), &options)?;
+
+    let output_fingerprint = fingerprint(output.as_file_mut())?;
+    verify_fingerprint(
+        &output_fingerprint,
+        case.expected_size,
+        expected_crc32,
+        &expected_sha256,
+    )?;
+    if case.compare_bytes
+        && !compare_files(output.as_file_mut(), &mut expected, case.expected_size)?
+    {
+        return Err(invalid_data(format!("byte mismatch in case {}", case.name)).into());
+    }
+    Ok(())
+}
+
 #[test]
 #[ignore = "requires VCDIFF_OVERSEER_CORPUS and external private data"]
 fn overseer_corpus() -> Result<(), Box<dyn Error>> {
@@ -183,41 +258,40 @@ fn overseer_corpus() -> Result<(), Box<dyn Error>> {
         if case.name.trim().is_empty() {
             return Err(invalid_data("corpus case name is empty").into());
         }
-        let expected_crc32 = parse_crc32(&case.expected_crc32)?;
-        let expected_sha256 = parse_sha256(&case.expected_sha256)?;
-        let source_path = resolve(manifest_root, &case.source);
-        let delta_path = resolve(manifest_root, &case.delta);
-        let expected_path = resolve(manifest_root, &case.expected_target);
-
-        println!("verifying corpus case {}", case.name);
-        let mut expected = File::open(&expected_path)?;
-        let expected_fingerprint = fingerprint(&mut expected)?;
-        verify_fingerprint(
-            &expected_fingerprint,
-            case.expected_size,
-            expected_crc32,
-            &expected_sha256,
-        )?;
-
-        let mut source = File::open(source_path)?;
-        let mut delta = File::open(delta_path)?;
-        let mut output = create_output(&expected_path, manifest_root)?;
-        let mut options = DecodeOptions::default();
-        options.max_target_size = case.expected_size;
-        decode_to(&mut source, &mut delta, output.as_file_mut(), &options)?;
-
-        let output_fingerprint = fingerprint(output.as_file_mut())?;
-        verify_fingerprint(
-            &output_fingerprint,
-            case.expected_size,
-            expected_crc32,
-            &expected_sha256,
-        )?;
-        if case.compare_bytes
-            && !compare_files(output.as_file_mut(), &mut expected, case.expected_size)?
-        {
-            return Err(invalid_data(format!("byte mismatch in case {}", case.name)).into());
-        }
+        verify_case(&case, manifest_root)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn source_mismatch_fails_before_output_creation() {
+        let directory = tempdir().unwrap();
+        let source = directory.path().join("source.bin");
+        let missing_root = directory.path().join("missing").join("corpus");
+        fs::write(&source, b"wrong source").unwrap();
+        let case = Case {
+            name: "wrong-source".to_owned(),
+            source,
+            expected_source_sha1: "0000000000000000000000000000000000000000".to_owned(),
+            delta: PathBuf::from("missing-delta.vcdiff"),
+            expected_target: PathBuf::from("missing-target.bin"),
+            expected_size: 0,
+            expected_crc32: "00000000".to_owned(),
+            expected_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+                .to_owned(),
+            compare_bytes: true,
+        };
+
+        let error = verify_case(&case, &missing_root).unwrap_err();
+        assert!(error.to_string().contains("source SHA-1 mismatch"));
+        assert!(!missing_root.exists());
+    }
 }

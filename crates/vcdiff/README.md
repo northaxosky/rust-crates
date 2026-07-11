@@ -30,14 +30,16 @@ Decodes the full RFC 3284 core: the default code table, the SAME/NEAR address ca
 instructions, overlapping copies, multiple windows, and both `VCD_SOURCE` and `VCD_TARGET` segments.
 Application headers are skipped and each window's Adler32 checksum is verified.
 
-Xdelta private secondary compressor ID 2 is supported as XZ-framed LZMA2. DATA, INST, and ADDR use
-independent decoder states that persist across windows, while section input is staged through a fixed
-64 KiB buffer. Decoded active sections and each dictionary are bounded by `DecodeOptions`.
+Xdelta private secondary compressor ID 1 is supported as stateless Static Huffman/DJW sections. ID 2
+is supported as XZ-framed LZMA2 with independent DATA, INST, and ADDR decoder states that persist
+across windows. Decoded active sections, DJW selector scratch, and each ID-2 dictionary are bounded by
+`DecodeOptions`.
 
-Hermetic interoperability fixtures verify xdelta 3.1.0 and 3.2.0 explicit none/LZMA output and literal
-xdelta 3.2.0 defaults, including its standard application-header armor metadata.
+Hermetic interoperability fixtures verify xdelta 3.1.0 and 3.2.0 explicit none/DJW/LZMA output,
+multi-window and multi-table DJW, and literal xdelta 3.2.0 defaults including its standard
+application-header armor metadata.
 
-DJW, FGK, and custom code tables remain unsupported. `DecodeError` reports stream origin and decoding
+FGK and custom code tables remain unsupported. `DecodeError` reports stream origin and decoding
 context and is `#[non_exhaustive]` for future format support. This crate decodes only; it does not
 produce deltas.
 
@@ -81,6 +83,12 @@ cargo test -p vcdiff-rs --test overseer_corpus -- --ignored --exact --nocapture
 Temporary decoded files are created beside the expected target when possible and removed by RAII.
 Case names are reported, while private paths remain external.
 
+Each ID-1 corpus case requires the clean, unmodified Steam pre-patch source whose SHA-1 matches
+`expected_source_sha1`. The source is stream-hashed before any output is created. A
+Game Pass/1.10.984 note in patch-tool configuration describes replacement-asset provenance; it does
+not identify the VCDIFF base. Keep real source paths, hashes, deltas, and target identities only in
+the external local manifest.
+
 ## Windows benchmark
 
 Run on AC power with other workloads closed. Record Defender real-time scanning or exclusions and the
@@ -105,7 +113,7 @@ ignored by Git.
 
 ## Overseer onboarding status
 
-- [x] Streaming decoder, ID-2 support, and external xdelta fixture matrix
+- [x] Streaming decoder, ID-1/ID-2 support, and external xdelta fixture matrix
 - [x] Synthetic 2+ GiB acceptance and differential-memory tooling
 - [x] Opt-in corpus and representative benchmark tooling
 - [ ] Real local Overseer corpus verification
