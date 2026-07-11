@@ -16,6 +16,8 @@ const VERSION_32: &str = include_str!("fixtures/xdelta/producers/xdelta-3.2.0-ve
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum FixtureKind {
     None,
+    Djw,
+    Djw9,
     Lzma,
     Default,
 }
@@ -43,6 +45,16 @@ const FIXTURES: &[Fixture] = &[
         headers: include_str!("fixtures/xdelta/printhdrs/xdelta-3.1.0-none.txt"),
     },
     Fixture {
+        name: "xdelta-3.1.0-djw",
+        producer: "3.1.0",
+        kind: FixtureKind::Djw,
+        delta: include_bytes!("fixtures/xdelta/xdelta-3.1.0-djw.vcdiff"),
+        size: 63_610,
+        crc32: 0x020E_276B,
+        sha256: "e250a265b6aef9e2c1217f05206335a471c7cecb1c7cfb5725691810e3f92a30",
+        headers: include_str!("fixtures/xdelta/printhdrs/xdelta-3.1.0-djw.txt"),
+    },
+    Fixture {
         name: "xdelta-3.1.0-lzma",
         producer: "3.1.0",
         kind: FixtureKind::Lzma,
@@ -61,6 +73,26 @@ const FIXTURES: &[Fixture] = &[
         crc32: 0xC7B4_B3E1,
         sha256: "5e12b575e3ea2c78e85eb03e68f3f154dbcaecf2cdef136c55396128cfb7da61",
         headers: include_str!("fixtures/xdelta/printhdrs/xdelta-3.2.0-none.txt"),
+    },
+    Fixture {
+        name: "xdelta-3.2.0-djw",
+        producer: "3.2.0",
+        kind: FixtureKind::Djw,
+        delta: include_bytes!("fixtures/xdelta/xdelta-3.2.0-djw.vcdiff"),
+        size: 63_610,
+        crc32: 0x020E_276B,
+        sha256: "e250a265b6aef9e2c1217f05206335a471c7cecb1c7cfb5725691810e3f92a30",
+        headers: include_str!("fixtures/xdelta/printhdrs/xdelta-3.2.0-djw.txt"),
+    },
+    Fixture {
+        name: "xdelta-3.2.0-djw9",
+        producer: "3.2.0",
+        kind: FixtureKind::Djw9,
+        delta: include_bytes!("fixtures/xdelta/xdelta-3.2.0-djw9.vcdiff"),
+        size: 55_045,
+        crc32: 0xB992_AABB,
+        sha256: "c90c2eb28afbda4079aaf7a9201f2d18ba7722eea8e37ac264f0be21b31ff4ed",
+        headers: include_str!("fixtures/xdelta/printhdrs/xdelta-3.2.0-djw9.txt"),
     },
     Fixture {
         name: "xdelta-3.2.0-lzma",
@@ -99,12 +131,12 @@ const RECORDED_FILES: &[RecordedFile] = &[
     RecordedFile {
         name: "README.md",
         bytes: include_bytes!("fixtures/xdelta/README.md"),
-        sha256: "e51eb374715f4cdb11ee26ea334c5ec84f627b79e5c034f11b4603192ddd0a3c",
+        sha256: "7e4b79a95452751efab2a4a74c2df4f555fc6f02db3f4f3f0a79dd9986178ba1",
     },
     RecordedFile {
         name: "generate.py",
         bytes: include_bytes!("fixtures/xdelta/generate.py"),
-        sha256: "34243c4f0723865f9fd33668a9a4b5e3c808068789f1675d5046159df5836c74",
+        sha256: "690887142c46c42ba9f2f18d58a7f624204dc46296c08bf546e8b8588edf972d",
     },
     RecordedFile {
         name: "producers/xdelta-3.1.0-config.txt",
@@ -127,6 +159,11 @@ const RECORDED_FILES: &[RecordedFile] = &[
         sha256: "09fb457e33f39cc51ee190f99ec0e7b3211a2453b53eafbe12b9083a55ebb589",
     },
     RecordedFile {
+        name: "printhdrs/xdelta-3.1.0-djw.txt",
+        bytes: include_bytes!("fixtures/xdelta/printhdrs/xdelta-3.1.0-djw.txt"),
+        sha256: "6e17ff49eac944c48e11f203fc1803d6cec1a27e2f06d8333210c4497e970fe4",
+    },
+    RecordedFile {
         name: "printhdrs/xdelta-3.1.0-lzma.txt",
         bytes: include_bytes!("fixtures/xdelta/printhdrs/xdelta-3.1.0-lzma.txt"),
         sha256: "9c4f90d28c6cfec30f119a9cc467822544619abc1af23310f5c46c47647dea64",
@@ -140,6 +177,16 @@ const RECORDED_FILES: &[RecordedFile] = &[
         name: "printhdrs/xdelta-3.2.0-default.txt",
         bytes: include_bytes!("fixtures/xdelta/printhdrs/xdelta-3.2.0-default.txt"),
         sha256: "de05c2872af4361b07d6b0b315fc706b863fa0d90dad5ae49e872fe370ba6e75",
+    },
+    RecordedFile {
+        name: "printhdrs/xdelta-3.2.0-djw.txt",
+        bytes: include_bytes!("fixtures/xdelta/printhdrs/xdelta-3.2.0-djw.txt"),
+        sha256: "6e17ff49eac944c48e11f203fc1803d6cec1a27e2f06d8333210c4497e970fe4",
+    },
+    RecordedFile {
+        name: "printhdrs/xdelta-3.2.0-djw9.txt",
+        bytes: include_bytes!("fixtures/xdelta/printhdrs/xdelta-3.2.0-djw9.txt"),
+        sha256: "00e82eec665b84484594b81f2b04cc6f0676a6cdaa55bd83039a18aaf1dd5ef7",
     },
     RecordedFile {
         name: "printhdrs/xdelta-3.2.0-lzma.txt",
@@ -306,6 +353,96 @@ fn split_compressed(payload: &[u8]) -> Result<(u64, &[u8]), String> {
     Ok((decoded_size, &payload[cursor.pos..]))
 }
 
+fn djw_group_count(payload: &[u8]) -> Result<u8, String> {
+    let (_, fragment) = split_compressed(payload)?;
+    let byte = fragment
+        .first()
+        .copied()
+        .ok_or_else(|| "empty DJW fragment".to_owned())?;
+    let mut raw = 0_u8;
+    for physical_bit in 0..3 {
+        raw = (raw << 1) | ((byte >> physical_bit) & 1);
+    }
+    Ok(raw + 1)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct HeaderWindow {
+    target_size: u64,
+    delta_indicator: u8,
+    data_len: usize,
+    instructions_len: usize,
+    addresses_len: usize,
+}
+
+fn printhdr_values<T: std::str::FromStr>(headers: &str, label: &str) -> Result<Vec<T>, String> {
+    headers
+        .lines()
+        .filter_map(|line| line.strip_prefix(label))
+        .map(|value| {
+            value
+                .trim()
+                .parse()
+                .map_err(|_| format!("invalid {label} value {value:?}"))
+        })
+        .collect()
+}
+
+fn printhdr_indicators(headers: &str) -> Result<Vec<u8>, String> {
+    headers
+        .lines()
+        .filter_map(|line| line.strip_prefix("VCDIFF delta indicator:"))
+        .map(|value| {
+            let value = value.trim();
+            if value == "none" {
+                return Ok(0);
+            }
+            let mut indicator = 0_u8;
+            for flag in value.split_ascii_whitespace() {
+                indicator |= match flag {
+                    "VCD_DATACOMP" => 0x01,
+                    "VCD_INSTCOMP" => 0x02,
+                    "VCD_ADDRCOMP" => 0x04,
+                    _ => return Err(format!("unknown delta indicator {flag}")),
+                };
+            }
+            Ok(indicator)
+        })
+        .collect()
+}
+
+fn parse_printhdr_windows(headers: &str) -> Result<Vec<HeaderWindow>, String> {
+    let targets = printhdr_values::<u64>(headers, "VCDIFF target window length:")?;
+    let mut indicators = printhdr_indicators(headers)?;
+    let data = printhdr_values::<usize>(headers, "VCDIFF data section length:")?;
+    let instructions = printhdr_values::<usize>(headers, "VCDIFF inst section length:")?;
+    let addresses = printhdr_values::<usize>(headers, "VCDIFF addr section length:")?;
+    let count = targets.len();
+    if indicators.is_empty() {
+        indicators.resize(count, 0);
+    }
+    if [
+        indicators.len(),
+        data.len(),
+        instructions.len(),
+        addresses.len(),
+    ]
+    .iter()
+    .any(|&len| len != count)
+    {
+        return Err("incomplete printhdr window records".to_owned());
+    }
+    Ok((0..count)
+        .map(|index| HeaderWindow {
+            target_size: targets[index],
+            delta_indicator: indicators[index],
+            data_len: data[index],
+            instructions_len: instructions[index],
+            addresses_len: addresses[index],
+        })
+        .collect())
+}
+
 fn parse_armor_entry(entry: &str) -> Result<(&str, &str), String> {
     let (name, digest) = entry
         .split_once('#')
@@ -376,6 +513,8 @@ fn producer_metadata_and_fixture_identities_are_stable() {
     );
     assert!(VERSION_31.contains("Xdelta version 3.1.0"));
     assert!(VERSION_32.contains("Xdelta version 3.2.0"));
+    assert!(CONFIG_31.contains("SECONDARY_DJW=1"));
+    assert!(CONFIG_32.contains("SECONDARY_DJW=1"));
     assert!(CONFIG_31.contains("SECONDARY_LZMA=1"));
     assert!(CONFIG_32.contains("SECONDARY_LZMA=1"));
 
@@ -412,8 +551,36 @@ fn producer_metadata_and_fixture_identities_are_stable() {
 }
 
 #[test]
+fn complete_printhdr_records_match_their_binary_fixtures() {
+    for fixture in FIXTURES {
+        let parsed = parse_delta(fixture.delta).unwrap();
+        let recorded = parse_printhdr_windows(fixture.headers)
+            .unwrap_or_else(|error| panic!("{}: {error}", fixture.name));
+        let actual: Vec<_> = parsed
+            .windows
+            .iter()
+            .map(|window| HeaderWindow {
+                target_size: window.target_size,
+                delta_indicator: window.delta_indicator,
+                data_len: window.data.len(),
+                instructions_len: window.instructions.len(),
+                addresses_len: window.addresses.len(),
+            })
+            .collect();
+        assert_eq!(recorded, actual, "{} printhdr records", fixture.name);
+    }
+}
+
+#[test]
 fn all_external_matrix_fixtures_decode_exactly() {
     for fixture in FIXTURES {
+        assert_eq!(
+            decode(SOURCE, fixture.delta)
+                .unwrap_or_else(|error| panic!("{} slice API failed: {error}", fixture.name)),
+            TARGET,
+            "{} slice output",
+            fixture.name
+        );
         let mut source = Cursor::new(SOURCE);
         let mut delta = Cursor::new(fixture.delta);
         let mut target = Cursor::new(Vec::new());
@@ -455,6 +622,72 @@ fn matrix_structure_matches_the_recorded_generation_modes() {
                     "{} raw sections",
                     fixture.name
                 );
+            }
+            FixtureKind::Djw | FixtureKind::Djw9 => {
+                let expected_groups = if fixture.kind == FixtureKind::Djw9 {
+                    5
+                } else {
+                    1
+                };
+                assert_eq!(parsed.compressor_id, Some(1), "{} compressor", fixture.name);
+                assert_eq!(parsed.header_indicator, 1, "{} header", fixture.name);
+                assert_eq!(parsed.app_header, None, "{} app header", fixture.name);
+                assert_eq!(parsed.windows.len(), 6, "{} windows", fixture.name);
+                assert_eq!(
+                    fixture.headers.matches("VCDIFF window number:").count(),
+                    6,
+                    "{} printhdrs windows",
+                    fixture.name
+                );
+                for (index, window) in parsed.windows.iter().enumerate() {
+                    assert_eq!(
+                        window.target_size, 16_384,
+                        "{} window {index}",
+                        fixture.name
+                    );
+                    assert_eq!(
+                        window.delta_indicator, 0x01,
+                        "{} window {index} mixed flags",
+                        fixture.name
+                    );
+                    assert_eq!(
+                        window.instructions.len(),
+                        4,
+                        "{} window {index} raw INST",
+                        fixture.name
+                    );
+                    assert!(
+                        window.addresses.is_empty(),
+                        "{} window {index} raw ADDR",
+                        fixture.name
+                    );
+                    let (decoded_size, _) = split_compressed(window.data).unwrap();
+                    assert_eq!(decoded_size, window.target_size);
+                    assert_eq!(
+                        djw_group_count(window.data).unwrap(),
+                        expected_groups,
+                        "{} window {index} groups",
+                        fixture.name
+                    );
+                    if index > 0 {
+                        assert_ne!(
+                            window.delta_indicator & 0x01,
+                            0,
+                            "{} later window {index}",
+                            fixture.name
+                        );
+                    }
+                }
+                if fixture.kind == FixtureKind::Djw9 {
+                    assert!(
+                        parsed
+                            .windows
+                            .iter()
+                            .all(|window| djw_group_count(window.data).unwrap() > 1),
+                        "{} multi-table proof",
+                        fixture.name
+                    );
+                }
             }
             FixtureKind::Lzma => {
                 assert_eq!(parsed.compressor_id, Some(2), "{} compressor", fixture.name);
@@ -542,5 +775,54 @@ fn explicit_lzma_corpus_proves_later_window_continuation() {
             "{}",
             fixture.name
         );
+    }
+}
+
+#[test]
+fn id1_fixtures_reject_bounded_truncations() {
+    for fixture in FIXTURES
+        .iter()
+        .filter(|fixture| matches!(fixture.kind, FixtureKind::Djw | FixtureKind::Djw9))
+    {
+        let mut endpoints = vec![
+            0,
+            1,
+            5,
+            fixture.delta.len() / 4,
+            fixture.delta.len() / 2,
+            fixture.delta.len() - 1,
+        ];
+        endpoints.sort_unstable();
+        endpoints.dedup();
+        for endpoint in endpoints {
+            assert!(
+                decode(SOURCE, &fixture.delta[..endpoint]).is_err(),
+                "{} truncation {endpoint}",
+                fixture.name
+            );
+        }
+    }
+}
+
+#[test]
+fn bounded_id1_payload_mutations_never_panic() {
+    for fixture in FIXTURES
+        .iter()
+        .filter(|fixture| matches!(fixture.kind, FixtureKind::Djw | FixtureKind::Djw9))
+    {
+        let parsed = parse_delta(fixture.delta).unwrap();
+        let mut mutations = Vec::new();
+        for (window_index, window) in parsed.windows.iter().enumerate() {
+            let (_, fragment) = split_compressed(window.data).unwrap();
+            let fragment_start = fragment.as_ptr() as usize - fixture.delta.as_ptr() as usize;
+            for offset in [0, fragment.len() / 2, fragment.len() - 1] {
+                mutations.push((fragment_start + offset, (window_index + offset) % 8));
+            }
+        }
+        for (offset, bit) in mutations {
+            let mut changed = fixture.delta.to_vec();
+            changed[offset] ^= 1 << bit;
+            drop(decode(SOURCE, &changed));
+        }
     }
 }

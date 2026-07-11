@@ -1,0 +1,68 @@
+VCDIFF version:               0
+VCDIFF header size:           6
+VCDIFF header indicator:      VCD_SECONDARY 
+VCDIFF secondary compressor:  Static Huffman
+VCDIFF window number:         0
+VCDIFF window indicator:      VCD_ADLER32 
+VCDIFF adler32 checksum:      49E1C9AA
+VCDIFF delta indicator:       VCD_DATACOMP 
+VCDIFF delta encoding length: 9158
+VCDIFF target window length:  16384
+VCDIFF data section length:   9142
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0
+
+VCDIFF window number:         1
+VCDIFF window indicator:      VCD_ADLER32 
+VCDIFF adler32 checksum:      F18CD17F
+VCDIFF delta indicator:       VCD_DATACOMP 
+VCDIFF window at offset:      16384
+VCDIFF delta encoding length: 9273
+VCDIFF target window length:  16384
+VCDIFF data section length:   9257
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0
+
+VCDIFF window number:         2
+VCDIFF window indicator:      VCD_ADLER32 
+VCDIFF adler32 checksum:      3BF2D817
+VCDIFF delta indicator:       VCD_DATACOMP 
+VCDIFF window at offset:      32768
+VCDIFF delta encoding length: 9217
+VCDIFF target window length:  16384
+VCDIFF data section length:   9201
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0
+
+VCDIFF window number:         3
+VCDIFF window indicator:      VCD_ADLER32 
+VCDIFF adler32 checksum:      298DCF18
+VCDIFF delta indicator:       VCD_DATACOMP 
+VCDIFF window at offset:      49152
+VCDIFF delta encoding length: 9232
+VCDIFF target window length:  16384
+VCDIFF data section length:   9216
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0
+
+VCDIFF window number:         4
+VCDIFF window indicator:      VCD_ADLER32 
+VCDIFF adler32 checksum:      12E4D439
+VCDIFF delta indicator:       VCD_DATACOMP 
+VCDIFF window at offset:      65536
+VCDIFF delta encoding length: 8989
+VCDIFF target window length:  16384
+VCDIFF data section length:   8973
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0
+
+VCDIFF window number:         5
+VCDIFF window indicator:      VCD_ADLER32 
+VCDIFF adler32 checksum:      A0ECD684
+VCDIFF delta indicator:       VCD_DATACOMP 
+VCDIFF window at offset:      81920
+VCDIFF delta encoding length: 9152
+VCDIFF target window length:  16384
+VCDIFF data section length:   9136
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0

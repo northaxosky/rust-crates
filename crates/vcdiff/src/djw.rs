@@ -594,6 +594,9 @@ mod tests {
         include_bytes!("../tests/fixtures/xdelta/djw-multi-xdelta-3.2.0.payload.bin");
     const MULTI_RAW: &[u8] =
         include_bytes!("../tests/fixtures/xdelta/djw-multi-xdelta-3.2.0.raw.bin");
+    const MULTI_WINDOW_DELTA: &[u8] =
+        include_bytes!("../tests/fixtures/xdelta/xdelta-3.2.0-djw9.vcdiff");
+    const MATRIX_TARGET: &[u8] = include_bytes!("../tests/fixtures/xdelta/target.bin");
 
     #[derive(Debug, Default)]
     struct Trace {
@@ -677,6 +680,53 @@ mod tests {
             &mut trace,
         )?;
         Ok((output, trace, input.position()))
+    }
+
+    fn fixture_varint(bytes: &[u8], position: &mut usize) -> usize {
+        let mut value = 0_usize;
+        loop {
+            let byte = bytes[*position];
+            *position += 1;
+            value = (value << 7) | usize::from(byte & 0x7f);
+            if byte & 0x80 == 0 {
+                return value;
+            }
+        }
+    }
+
+    fn second_window_fragment() -> (&'static [u8], usize) {
+        let bytes = MULTI_WINDOW_DELTA;
+        assert_eq!(&bytes[..6], &[0xD6, 0xC3, 0xC4, 0, 1, 1]);
+        let mut position = 6;
+        for window in 0..=1 {
+            let indicator = bytes[position];
+            position += 1;
+            if indicator & 0x03 != 0 {
+                fixture_varint(bytes, &mut position);
+                fixture_varint(bytes, &mut position);
+            }
+            let encoding_len = fixture_varint(bytes, &mut position);
+            let encoding_start = position;
+            let target_size = fixture_varint(bytes, &mut position);
+            assert_eq!(bytes[position], 1);
+            position += 1;
+            let data_len = fixture_varint(bytes, &mut position);
+            let instructions_len = fixture_varint(bytes, &mut position);
+            let addresses_len = fixture_varint(bytes, &mut position);
+            if indicator & 0x04 != 0 {
+                position += 4;
+            }
+            let data_start = position;
+            let data_end = data_start + data_len;
+            if window == 1 {
+                let mut fragment_start = data_start;
+                assert_eq!(fixture_varint(bytes, &mut fragment_start), target_size);
+                return (&bytes[fragment_start..data_end], target_size);
+            }
+            position = data_end + instructions_len + addresses_len;
+            assert_eq!(position, encoding_start + encoding_len);
+        }
+        unreachable!()
     }
 
     fn decode_packed(
@@ -924,6 +974,26 @@ mod tests {
     fn external_multi_table_trace_straddles_implicit_zero_with_a_run() {
         let (_, trace, _) = anchor_decode(MULTI_PAYLOAD, MULTI_RAW, 0, u64::MAX).unwrap();
         assert_eq!(trace.implicit_with_run, 48);
+    }
+
+    #[test]
+    fn later_external_window_decodes_as_an_isolated_djw_section() {
+        let (fragment, decoded_size) = second_window_fragment();
+        let mut cursor = Cursor::new(fragment);
+        let mut input = DeltaInput::new(&mut cursor, fragment.len() as u64).unwrap();
+        input.set_window(Some(1));
+        input.set_section(Some(SectionKind::Data));
+        let mut output = vec![0; decoded_size];
+        decode_section(
+            &mut input,
+            fragment.len() as u64,
+            &mut output,
+            decoded_size as u64,
+            u64::MAX,
+        )
+        .unwrap();
+        assert_eq!(input.position(), fragment.len() as u64);
+        assert_eq!(output, MATRIX_TARGET[16_384..32_768]);
     }
 
     #[test]

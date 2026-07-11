@@ -42,7 +42,7 @@ signature-authentication claim is made here.
 - Extracted executable SHA-256: `53d90226615f217d3380c39892833311b4e24acd863e1ca01f14b5e772e2e6d0`
 
 Producer binaries and archives are not redistributed. Full `-V` and `config` output is under
-`producers/`; both configurations report `SECONDARY_LZMA=1`.
+`producers/`; both configurations report `SECONDARY_DJW=1` and `SECONDARY_LZMA=1`.
 
 ## Commands
 
@@ -51,8 +51,11 @@ Producer binaries and archives are not redistributed. Full `-V` and `config` out
 ```text
 xdelta3-3.1.0-x86_64.exe -e -A -N -S none -W 16384 -s source.bin target.bin xdelta-3.1.0-none.vcdiff
 xdelta3-3.1.0-x86_64.exe -e -A -N -S lzma -W 16384 -s source.bin target.bin xdelta-3.1.0-lzma.vcdiff
+xdelta3-3.1.0-x86_64.exe -f -e -A -N -S djw -W 16384 -s source.bin target.bin xdelta-3.1.0-djw.vcdiff
 xdelta3.exe -e -a -A -N -S none -W 16384 -s source.bin target.bin xdelta-3.2.0-none.vcdiff
 xdelta3.exe -e -a -A -N -S lzma -W 16384 -s source.bin target.bin xdelta-3.2.0-lzma.vcdiff
+xdelta3.exe -f -e -a -A -N -S djw -W 16384 -s source.bin target.bin xdelta-3.2.0-djw.vcdiff
+xdelta3.exe -f -e -a -A -N -S djw9 -W 16384 -s source.bin target.bin xdelta-3.2.0-djw9.vcdiff
 xdelta3.exe -e -s source.bin target.bin xdelta-3.2.0-default.vcdiff
 ```
 
@@ -68,10 +71,27 @@ Its standard `VCD_APPHEADER` retains the default ASCII BLAKE3 armor metadata. Pe
 | `target.bin` | 98304 | `c21ff467100a57e3495cf97bd025a9c903c32a85fd927f5d13b559d2b197daae` | `42318550` |
 | `xdelta-3.1.0-none.vcdiff` | 98435 | `5e12b575e3ea2c78e85eb03e68f3f154dbcaecf2cdef136c55396128cfb7da61` | `c7b4b3e1` |
 | `xdelta-3.1.0-lzma.vcdiff` | 16714 | `f40d8e39994dfd7460cf63883764159cd4fae8285d3cc8c4f8ef231a969f007c` | `29beb5d8` |
+| `xdelta-3.1.0-djw.vcdiff` | 63610 | `e250a265b6aef9e2c1217f05206335a471c7cecb1c7cfb5725691810e3f92a30` | `020e276b` |
 | `xdelta-3.2.0-none.vcdiff` | 98435 | `5e12b575e3ea2c78e85eb03e68f3f154dbcaecf2cdef136c55396128cfb7da61` | `c7b4b3e1` |
 | `xdelta-3.2.0-lzma.vcdiff` | 16714 | `f40d8e39994dfd7460cf63883764159cd4fae8285d3cc8c4f8ef231a969f007c` | `29beb5d8` |
+| `xdelta-3.2.0-djw.vcdiff` | 63610 | `e250a265b6aef9e2c1217f05206335a471c7cecb1c7cfb5725691810e3f92a30` | `020e276b` |
+| `xdelta-3.2.0-djw9.vcdiff` | 55045 | `c90c2eb28afbda4079aaf7a9201f2d18ba7722eea8e37ac264f0be21b31ff4ed` | `b992aabb` |
 | `xdelta-3.2.0-default.vcdiff` | 16842 | `cd9db261e9cc08ad036a933314fcfc1c24922762ccb8078145469bca000a1ad5` | `20ea56be` |
 
 Each delta was decoded by its matching external producer to 98304 bytes with target SHA-256
 `c21ff467100a57e3495cf97bd025a9c903c32a85fd927f5d13b559d2b197daae`. The checked-in
 files are generated VCDIFF outputs; no producer executable or archive is redistributed.
+
+## ID-1 structure
+
+| Fixture | Compressor ID | Windows | Later compressed windows | Exact flags | DJW groups |
+|---|---:|---:|---:|---|---:|
+| `xdelta-3.1.0-djw.vcdiff` | 1 | 6 | 5 | DATA only in every window | 1 in every window |
+| `xdelta-3.2.0-djw.vcdiff` | 1 | 6 | 5 | DATA only in every window | 1 in every window |
+| `xdelta-3.2.0-djw9.vcdiff` | 1 | 6 | 5 | DATA only in every window | 5 in every window |
+
+The DATA-only indicator is a genuine mixed section result: DATA is DJW-compressed while INST is
+raw and ADDR is raw and empty. The group counts are parsed from the first three physical
+least-significant-first payload bits with logical most-significant-first assembly. Complete
+`printhdrs` output is under `printhdrs/`. Each producer decoded its matching ID-1 delta to the
+recorded target identity above.

@@ -3,6 +3,12 @@ from pathlib import Path
 
 root = Path(__file__).parent
 
+djw_commands = [
+    "xdelta3-3.1.0-x86_64.exe -f -e -A -N -S djw -W 16384 -s source.bin target.bin xdelta-3.1.0-djw.vcdiff",
+    "xdelta3.exe -f -e -a -A -N -S djw -W 16384 -s source.bin target.bin xdelta-3.2.0-djw.vcdiff",
+    "xdelta3.exe -f -e -a -A -N -S djw9 -W 16384 -s source.bin target.bin xdelta-3.2.0-djw9.vcdiff",
+]
+
 source = bytearray()
 seed = b"vcdiff-id2-feasibility-source"
 while len(source) < 131072:
@@ -25,3 +31,6 @@ for window in range(6):
 
 (root / "source.bin").write_bytes(bytes(source[:131072]))
 (root / "target.bin").write_bytes(b"".join(windows))
+
+for command in djw_commands:
+    print(command)
