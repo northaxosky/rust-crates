@@ -6,11 +6,11 @@
 //! `VCD_TARGET` segments. Output from `xdelta3 -e -S none` decodes directly: application headers are
 //! skipped and per-window Adler32 checksums are verified.
 //!
-//! Xdelta secondary compressor ID 2 is supported as XZ-framed LZMA2 with independent persistent
-//! DATA, INST, and ADDR states. Other secondary compressors and custom code tables are rejected.
-//! Interoperability fixtures cover xdelta 3.1.0 and 3.2.0 none/LZMA output plus literal 3.2.0 defaults.
-//! Ignored stress and manifest-driven corpus tests plus Windows scripts support local acceptance;
-//! private corpus verification and a representative benchmark remain caller-run onboarding gates.
+//! Xdelta secondary compressor ID 1 is supported as stateless Static Huffman/DJW sections. ID 2 uses
+//! XZ-framed LZMA2 with independent persistent DATA, INST, and ADDR states. Custom code tables and
+//! other secondary compressors are rejected. Interoperability fixtures cover xdelta 3.1.0 and 3.2.0
+//! none/DJW/LZMA output plus literal 3.2.0 defaults. Ignored stress and manifest-driven corpus tests
+//! plus Windows scripts support local acceptance without bundling private data.
 //! [`DecodeOptions::default`] leaves target size unlimited, so callers decoding untrusted deltas should
 //! set [`DecodeOptions::max_target_size`] to prevent unbounded disk consumption.
 //! [`decode_to`] measures and resets both inputs, requires an empty target, and leaves successful output

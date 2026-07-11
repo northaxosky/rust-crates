@@ -116,8 +116,8 @@ ignored by Git.
 - [x] Streaming decoder, ID-1/ID-2 support, and external xdelta fixture matrix
 - [x] Synthetic 2+ GiB acceptance and differential-memory tooling
 - [x] Opt-in corpus and representative benchmark tooling
-- [ ] Real local Overseer corpus verification
-- [ ] Representative large-file benchmark report
+- [x] Real local Overseer corpus verification
+- [x] Representative large-file benchmark report
 
 ## License
 
