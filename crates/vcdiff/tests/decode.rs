@@ -6,8 +6,7 @@ use common::{Op, build, join_windows};
 use proptest::prelude::*;
 use vcdiff_rs::{DecodeError, decode};
 
-// Golden vectors below are hand-encoded from the RFC 3284 grammar and the default code table, so they
-// validate the decoder against externally-specified bytes rather than our own encoder.
+// Golden vectors are hand-encoded from RFC grammar rather than the test encoder
 
 #[test]
 fn golden_add_only() {
@@ -66,7 +65,7 @@ fn golden_adler32_mismatch_is_rejected() {
     ];
     assert!(matches!(
         decode(b"", &delta),
-        Err(DecodeError::ChecksumMismatch)
+        Err(DecodeError::ChecksumMismatch { .. })
     ));
 }
 
@@ -116,14 +115,17 @@ fn empty_target_is_valid() {
 
 #[test]
 fn bad_magic_is_rejected() {
-    assert!(matches!(decode(b"", b"XXXX"), Err(DecodeError::BadMagic)));
+    assert!(matches!(
+        decode(b"", b"XXXX"),
+        Err(DecodeError::BadMagic { .. })
+    ));
 }
 
 #[test]
 fn truncated_header_is_rejected() {
     assert!(matches!(
         decode(b"", &[0xD6, 0xC3]),
-        Err(DecodeError::UnexpectedEof)
+        Err(DecodeError::TruncatedDelta { .. })
     ));
 }
 
@@ -132,7 +134,7 @@ fn unsupported_version_is_rejected() {
     let delta = [0xD6, 0xC3, 0xC4, 0x01, 0x00];
     assert!(matches!(
         decode(b"", &delta),
-        Err(DecodeError::UnsupportedVersion(1))
+        Err(DecodeError::UnsupportedVersion { version: 1, .. })
     ));
 }
 
@@ -141,7 +143,7 @@ fn secondary_compressor_is_rejected() {
     let delta = [0xD6, 0xC3, 0xC4, 0x00, 0x01, 0x00];
     assert!(matches!(
         decode(b"", &delta),
-        Err(DecodeError::UnsupportedSecondaryCompressor)
+        Err(DecodeError::UnsupportedSecondaryCompressor { id: 0, .. })
     ));
 }
 
@@ -150,7 +152,7 @@ fn custom_code_table_is_rejected() {
     let delta = [0xD6, 0xC3, 0xC4, 0x00, 0x02];
     assert!(matches!(
         decode(b"", &delta),
-        Err(DecodeError::UnsupportedCodeTable)
+        Err(DecodeError::UnsupportedCodeTable { .. })
     ));
 }
 
@@ -163,7 +165,7 @@ fn delta_length_mismatch_is_rejected() {
     ];
     assert!(matches!(
         decode(b"", &delta),
-        Err(DecodeError::DeltaLengthMismatch)
+        Err(DecodeError::DeltaLengthMismatch { .. })
     ));
 }
 
@@ -176,7 +178,7 @@ fn target_size_mismatch_is_rejected() {
     ];
     assert!(matches!(
         decode(b"", &delta),
-        Err(DecodeError::TargetSizeMismatch)
+        Err(DecodeError::TargetSizeMismatch { .. })
     ));
 }
 
@@ -186,7 +188,7 @@ fn address_out_of_bounds_is_rejected() {
     let ops = vec![Op::Copy(5, 1)];
     assert!(matches!(
         decode(b"", &build(0, &ops)),
-        Err(DecodeError::AddressOutOfBounds)
+        Err(DecodeError::AddressOutOfBounds { .. })
     ));
 }
 
@@ -196,7 +198,7 @@ fn copy_crossing_source_target_is_rejected() {
     let ops = vec![Op::Copy(3, 3)];
     assert!(matches!(
         decode(b"abcd", &build(4, &ops)),
-        Err(DecodeError::CopyCrossesSourceTarget)
+        Err(DecodeError::CopyCrossesSourceTarget { .. })
     ));
 }
 
@@ -209,7 +211,7 @@ fn segment_out_of_bounds_is_rejected() {
     ];
     assert!(matches!(
         decode(b"abc", &delta),
-        Err(DecodeError::SegmentOutOfBounds)
+        Err(DecodeError::SegmentOutOfBounds { .. })
     ));
 }
 
@@ -222,7 +224,11 @@ fn oversized_target_is_rejected_without_allocating() {
     ];
     assert!(matches!(
         decode(b"", &delta),
-        Err(DecodeError::SizeLimitExceeded)
+        Err(DecodeError::TargetSizeLimit {
+            attempted: 4_294_967_296,
+            limit: 1_073_741_824,
+            ..
+        })
     ));
 }
 

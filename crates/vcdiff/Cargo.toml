@@ -14,6 +14,13 @@ publish = false
 
 [dependencies]
 thiserror.workspace = true
+xz4rust = { git = "https://github.com/northaxosky/xz4rust", rev = "7625e9fea5422772f606887cae5cb821c931102a", default-features = false, features = ["alloc", "no_unsafe"] }
 
 [dev-dependencies]
+blake3.workspace = true
+crc32fast.workspace = true
 proptest.workspace = true
+serde.workspace = true
+sha2.workspace = true
+tempfile.workspace = true
+toml.workspace = true

@@ -1,0 +1,4 @@
+Xdelta version 3.2.0, Copyright (C) Joshua MacDonald
+Xdelta comes with ABSOLUTELY NO WARRANTY.
+Licensed under the Apache License, Version 2.0
+See "LICENSE" for details.

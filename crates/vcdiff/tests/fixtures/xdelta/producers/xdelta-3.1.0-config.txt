@@ -1,0 +1,34 @@
+Xdelta version 3.1.0, Copyright (C) Joshua MacDonald
+Xdelta comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it
+under certain conditions; see "COPYING" for details.
+EXTERNAL_COMPRESSION=0
+REGRESSION_TEST=1
+SECONDARY_DJW=1
+SECONDARY_FGK=1
+SECONDARY_LZMA=1
+UNALIGNED_OK=1
+VCDIFF_TOOLS=1
+XD3_ALLOCSIZE=16384
+XD3_DEBUG=0
+XD3_ENCODER=1
+XD3_POSIX=0
+XD3_STDIO=0
+XD3_WIN32=1
+XD3_USE_LARGEFILE64=1
+XD3_USE_LARGESIZET=1
+XD3_DEFAULT_LEVEL=3
+XD3_DEFAULT_IOPT_SIZE=32768
+XD3_DEFAULT_SPREVSZ=262144
+XD3_DEFAULT_SRCWINSZ=67108864
+XD3_DEFAULT_WINSIZE=8388608
+XD3_HARDMAXWINSIZE=67108864
+sizeof(void*)=8
+sizeof(int)=4
+sizeof(long)=4
+sizeof(long long)=8
+sizeof(size_t)=8
+sizeof(uint32_t)=4
+sizeof(uint64_t)=8
+sizeof(usize_t)=8
+sizeof(xoff_t)=8

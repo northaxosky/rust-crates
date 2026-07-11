@@ -1,0 +1,62 @@
+VCDIFF version:               0
+VCDIFF header size:           5
+VCDIFF header indicator:      none
+VCDIFF secondary compressor:  lzma
+VCDIFF window number:         0
+VCDIFF window indicator:      VCD_ADLER32
+VCDIFF adler32 checksum:      49E1C9AA
+VCDIFF delta encoding length: 16401
+VCDIFF target window length:  16384
+VCDIFF data section length:   16384
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0
+
+VCDIFF window number:         1
+VCDIFF window indicator:      VCD_ADLER32
+VCDIFF adler32 checksum:      F18CD17F
+VCDIFF window at offset:      16384
+VCDIFF delta encoding length: 16401
+VCDIFF target window length:  16384
+VCDIFF data section length:   16384
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0
+
+VCDIFF window number:         2
+VCDIFF window indicator:      VCD_ADLER32
+VCDIFF adler32 checksum:      3BF2D817
+VCDIFF window at offset:      32768
+VCDIFF delta encoding length: 16401
+VCDIFF target window length:  16384
+VCDIFF data section length:   16384
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0
+
+VCDIFF window number:         3
+VCDIFF window indicator:      VCD_ADLER32
+VCDIFF adler32 checksum:      298DCF18
+VCDIFF window at offset:      49152
+VCDIFF delta encoding length: 16401
+VCDIFF target window length:  16384
+VCDIFF data section length:   16384
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0
+
+VCDIFF window number:         4
+VCDIFF window indicator:      VCD_ADLER32
+VCDIFF adler32 checksum:      12E4D439
+VCDIFF window at offset:      65536
+VCDIFF delta encoding length: 16401
+VCDIFF target window length:  16384
+VCDIFF data section length:   16384
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0
+
+VCDIFF window number:         5
+VCDIFF window indicator:      VCD_ADLER32
+VCDIFF adler32 checksum:      A0ECD684
+VCDIFF window at offset:      81920
+VCDIFF delta encoding length: 16401
+VCDIFF target window length:  16384
+VCDIFF data section length:   16384
+VCDIFF inst section length:   4
+VCDIFF addr section length:   0

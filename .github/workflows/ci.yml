@@ -19,3 +19,11 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo build --all-targets --locked
       - run: cargo test --locked
+
+  windows-vcdiff:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build -p vcdiff-rs --all-targets --locked
+      - run: cargo test -p vcdiff-rs --locked

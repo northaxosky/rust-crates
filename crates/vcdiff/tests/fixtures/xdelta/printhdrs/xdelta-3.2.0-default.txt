@@ -1,0 +1,16 @@
+VCDIFF version:               0
+VCDIFF header size:           161
+VCDIFF header indicator:      VCD_SECONDARY VCD_APPHEADER
+VCDIFF secondary compressor:  lzma
+VCDIFF application header:    target.bin#22a85a9ba93a4379acdd15956a7eca6682ea5edf104592efaa0a9e1d96ba9d2c//source.bin#209177e061dff5607004f09fbf52744db716670322a0b8ea8e4dda28a8f6fda4/
+XDELTA filename (output):     target.bin
+XDELTA filename (source):     source.bin
+VCDIFF window number:         0
+VCDIFF window indicator:      VCD_ADLER32
+VCDIFF adler32 checksum:      4F01ED4C
+VCDIFF delta indicator:       VCD_DATACOMP VCD_INSTCOMP VCD_ADDRCOMP
+VCDIFF delta encoding length: 16677
+VCDIFF target window length:  98304
+VCDIFF data section length:   10054
+VCDIFF inst section length:   3552
+VCDIFF addr section length:   3057
