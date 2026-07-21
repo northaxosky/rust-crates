@@ -12,8 +12,8 @@ mod manager. No external tools or C++ dependencies, cross-platform by default.
 
 `vcdiff-rs` is implementation-complete, including bounded-memory file decoding, synthetic 2+ GiB
 acceptance, and local ID-1 corpus and Windows benchmark acceptance. Private bytes and benchmark results
-remain untracked. Publication remains disabled until its pinned `xz4rust` Git dependency is available
-from crates.io.
+remain untracked. Its `xz4rust` dependency is now published on crates.io (0.2.2), clearing the
+dependency blocker for publication.
 
 ## Build, test, lint
 

@@ -687,8 +687,9 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "xz4rust"
-version = "0.2.1"
-source = "git+https://github.com/northaxosky/xz4rust?rev=7625e9fea5422772f606887cae5cb821c931102a#7625e9fea5422772f606887cae5cb821c931102a"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e50ff4a4991f1b1644332b3088959b405f48f978b001920c377900140e136b25"
 
 [[package]]
 name = "zerocopy"
